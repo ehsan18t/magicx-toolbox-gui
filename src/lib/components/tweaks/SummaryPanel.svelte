@@ -1,12 +1,27 @@
+<script lang="ts" module>
+  import { CHECKING, SYSTEM_DEFAULT_LABEL, type Tallies } from "$lib/utils/tweakPresentation";
+
+  // Bar and legend order.
+  const SEGMENTS: { state: keyof Tallies["byState"]; label: string; fill: string }[] = [
+    { state: "active", label: "Applied", fill: "bg-accent" },
+    { state: "system_default", label: SYSTEM_DEFAULT_LABEL, fill: "bg-foreground-subtle" },
+    { state: "unknown", label: "Unknown", fill: "bg-warning" },
+    { state: "unavailable", label: "Unavailable", fill: "bg-border-hover" },
+    { state: "loading", label: CHECKING.label, fill: "bg-border" },
+  ];
+</script>
+
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import type { IconName, TextTone } from "$lib/design";
   import { Card, Count, PanelHeading } from "$lib/components/ui";
-  import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
+  import { toPercent } from "$lib/components/ui/percent";
+  import { tweakDetailsModalStore } from "$lib/stores/detailsModal.svelte";
   import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { expand, fade, reducedMotion } from "$lib/utils/motion";
+  import { expand, reducedMotion } from "$lib/utils/motion";
   import { attentionCause, rowDomId, tallies } from "$lib/utils/tweakPresentation";
+  import AppliedMeter from "./AppliedMeter.svelte";
 
   interface Props {
     /** Names the pane for assistive tech, e.g. "Security at a glance". */
@@ -17,15 +32,7 @@
   let { label, tweaks }: Props = $props();
 
   const stats = $derived(tallies(tweaks));
-  const breakdown = $derived(
-    [
-      { label: "Applied", value: stats.applied, tone: "bg-accent" },
-      { label: "System default", value: stats.byState.system_default, tone: "bg-foreground-subtle" },
-      { label: "Unknown", value: stats.byState.unknown, tone: "bg-warning" },
-      { label: "Unavailable", value: stats.byState.unavailable, tone: "bg-border-hover" },
-      { label: "Checking", value: stats.byState.loading, tone: "bg-border" },
-    ].filter((b) => b.value > 0),
-  );
+  const breakdown = $derived(SEGMENTS.map((s) => ({ ...s, value: stats.byState[s.state] })).filter((s) => s.value > 0));
 
   const attention = $derived(tweaks.filter((t) => t.status.attention));
   const pending = $derived(tweaks.filter((t) => pendingChangesStore.has(t.definition.id)));
@@ -84,7 +91,7 @@
 {/snippet}
 
 <aside
-  class="flex w-summary-panel shrink-0 animate-fade-in flex-col border-l border-border bg-surface"
+  class="hidden w-summary-panel shrink-0 animate-fade-in flex-col border-l border-border bg-surface @min-summary-panel:flex"
   aria-label={label}
 >
   <header class="shrink-0 border-b border-border px-5 pt-4 pb-3">
@@ -95,22 +102,22 @@
   <div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
     {#if stats.total > 0}
       <Card as="section" class="p-3">
-        <div class="flex items-baseline justify-between">
-          <span class="text-ui text-foreground-muted">Applied</span>
-          <span class="text-sm font-semibold tabular-nums">{stats.applied} of {stats.total}</span>
-        </div>
-        <div class="mt-2 flex h-1.5 overflow-hidden rounded-full bg-muted">
-          {#each breakdown as b (b.label)}
-            <div
-              class="transition-[width] duration-slower ease-out {b.tone}"
-              style:width="{(b.value / stats.total) * 100}%"
-            ></div>
-          {/each}
-        </div>
+        <AppliedMeter applied={stats.applied} total={stats.total}>
+          {#snippet bar()}
+            <div class="flex h-1.5 overflow-hidden rounded-full bg-muted">
+              {#each breakdown as b (b.state)}
+                <div
+                  class="transition-[width] duration-slower ease-out {b.fill}"
+                  style:width="{toPercent(b.value, stats.total)}%"
+                ></div>
+              {/each}
+            </div>
+          {/snippet}
+        </AppliedMeter>
         <ul class="m-0 mt-2.5 flex list-none flex-wrap gap-x-4 gap-y-1 p-0">
-          {#each breakdown as b (b.label)}
+          {#each breakdown as b (b.state)}
             <li class="flex items-center gap-1.5 text-xs text-foreground-muted">
-              <span class="h-2 w-2 rounded-full {b.tone}"></span>
+              <span class="h-2 w-2 rounded-full {b.fill}"></span>
               {b.label}
               <span class="text-foreground tabular-nums">{b.value}</span>
             </li>
@@ -135,10 +142,10 @@
     {@render group("mdi:restart", "info", "Waiting for a restart", reboot, () => "")}
 
     {#if allClear && stats.total > 0}
-      <div class="flex items-center gap-2.5 rounded-lg border border-border bg-card p-3 text-ui" in:fade>
+      <Card class="flex animate-fade-in items-center gap-2.5 p-3 text-ui">
         <Icon icon="mdi:check-circle" size="lg" class="shrink-0 text-success" />
         <span class="text-foreground-muted">Nothing here needs your attention.</span>
-      </div>
+      </Card>
     {/if}
   </div>
 </aside>

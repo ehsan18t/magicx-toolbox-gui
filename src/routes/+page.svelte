@@ -1,7 +1,8 @@
 <script lang="ts">
   import { LoadError, PendingBar, RebootBanner } from "$lib/components/feedback";
   import { LogsPanel, Sidebar } from "$lib/components/layout";
-  import { AppDetailsModal, SummaryPanel, TweakDetailsModal } from "$lib/components/tweaks";
+  import { AppDetailsModal, TweakDetailsModal } from "$lib/components/items";
+  import { SummaryPanel } from "$lib/components/tweaks";
   import {
     CategoryView,
     FavoritesView,
@@ -20,8 +21,6 @@
   import { logError } from "$lib/utils/logger";
   import { onMount, type Component } from "svelte";
 
-  const SUMMARY_MIN_WIDTH = 1400;
-
   const PAGE_VIEWS: Record<PageId, Component> = {
     overview: OverviewView,
     search: SearchView,
@@ -33,7 +32,6 @@
   };
 
   let loadError = $state<string | null>(null);
-  let workspaceWidth = $state(0);
 
   onMount(async () => {
     void manualTestsStore.load();
@@ -61,9 +59,7 @@
 
 {#if loadError}
   <div class="flex h-full flex-col">
-    <div class="flex min-h-0 flex-1 items-center justify-center p-6">
-      <LoadError message={loadError} />
-    </div>
+    <LoadError message={loadError} />
     <LogsPanel />
   </div>
 {:else}
@@ -71,7 +67,7 @@
     <Sidebar />
     <main class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-tl-lg border-t border-l border-border bg-surface">
       <RebootBanner />
-      <div class="relative flex min-h-0 flex-1" bind:clientWidth={workspaceWidth}>
+      <div class="@container relative flex min-h-0 flex-1">
         <div class="relative flex min-w-0 flex-1 flex-col">
           {#key activeTab}
             <div class="min-h-0 flex-1 animate-rise-in">
@@ -84,7 +80,7 @@
           {/key}
           <PendingBar />
         </div>
-        {#if summary && workspaceWidth >= SUMMARY_MIN_WIDTH}
+        {#if summary}
           <!-- Keyed: switching pages remounts it rather than animating every group out and in. -->
           {#key summary.title}
             <SummaryPanel label="{summary.title} at a glance" tweaks={summary.tweaks} />

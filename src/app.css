@@ -223,6 +223,8 @@
   --container-dialog-lg: 42.5rem;
   --container-dialog-full: 75rem;
   --container-page: 68.75rem;
+  /* The workspace width at which the summary panel fits beside the page. */
+  --container-summary-panel: 87.5rem;
 
   --width-toast: min(22rem, calc(100vw - 2rem));
   --width-sidebar: 16rem;

@@ -4,20 +4,19 @@
 
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { type IconName, TONE_SOFT } from "$lib/design";
+  import { DROP_VEIL, TONE_WASH } from "$lib/design";
   import { PageLayout, PageStats } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { Badge, Button, Callout, EmptyState } from "$lib/components/ui";
-  import type { ButtonVariants } from "$lib/components/ui/variants";
+  import { Badge, Button, Callout, EmptyState, IconButton, IconTile } from "$lib/components/ui";
+  import { card } from "$lib/components/ui/variants";
   import { PROFILE_EXT } from "$lib/config/app";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
-  import { profileStore } from "$lib/stores/profile.svelte";
+  import { PROFILE_FILE_REJECTED, profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { listenFileDrop } from "$lib/utils/fileDrop";
-  import { formatDate } from "$lib/utils/time";
-  import { logError } from "$lib/utils/logger";
   import { fade, pop, reflow } from "$lib/utils/motion";
+  import { formatDate } from "$lib/utils/time";
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
 
@@ -29,16 +28,16 @@
   async function handleDelete(name: string) {
     if (deletingProfile) return;
     const confirmed = await confirmStore.ask({
-      title: "Delete Profile",
-      message: `Are you sure you want to delete '${name}'? This action cannot be undone.`,
-      confirmText: "Delete",
+      title: `Delete ${name}?`,
+      message: "The profile file is removed from this PC. This cannot be undone.",
+      confirmText: "Delete profile",
       variant: "danger",
     });
     if (!confirmed || deletingProfile) return;
 
     deletingProfile = name;
     if (await profileStore.deleteProfile(name)) toastStore.success(`Profile "${name}" deleted`);
-    else toastStore.error(profileStore.deleteError ?? "Failed to delete profile");
+    else toastStore.error(profileStore.deleteError ?? "Could not delete the profile");
     deletingProfile = null;
   }
 
@@ -49,20 +48,19 @@
 
   async function handleOpenFolder() {
     try {
-      const selected = await open({ directory: true, multiple: false, title: "Select Profile Folder" });
+      const selected = await open({ directory: true, multiple: false, title: "Select a profile folder" });
       if (typeof selected === "string") {
         profileStore.setProfileDir(selected);
-        toastStore.success(`Loaded profiles from: ${selected}`);
+        toastStore.success(`Showing profiles from ${selected}`);
       }
     } catch (error) {
-      logError("Failed to open folder", error);
-      toastStore.error("Failed to open folder dialog");
+      toastStore.failure("Failed to open the folder picker", error);
     }
   }
 
   function handleResetFolder() {
     profileStore.setProfileDir(null);
-    toastStore.info("Reset to default profile directory");
+    toastStore.info("Showing profiles from the default folder");
   }
 
   // The import modal owns drops while it is open.
@@ -77,34 +75,16 @@
         if (!importModalOpen()) void openImport(profileStore.importProfileFromPath(path));
       },
       onReject: () => {
-        if (!importModalOpen()) toastStore.error(`Invalid file type. Please select a .${PROFILE_EXT} profile file.`);
+        if (!importModalOpen()) toastStore.error(PROFILE_FILE_REJECTED);
       },
     }),
   );
 </script>
 
-{#snippet toolbarButton(
-  icon: IconName,
-  label: string,
-  tip: string,
-  variant: ButtonVariants["variant"],
-  onclick?: () => void,
-)}
-  <span class="inline-flex" use:tooltip={tip}>
-    <Button {variant} {onclick} disabled={!onclick}>
-      <Icon {icon} size="md" />
-      {label}
-    </Button>
-  </span>
-{/snippet}
-
 <div class="relative h-full">
   <PageLayout title="Profiles" description="Saved configuration profiles you can apply on this or another PC.">
     {#snippet aside()}
       <PageStats items={[{ value: profiles.length, label: "saved" }]} />
-    {/snippet}
-
-    {#snippet toolbar()}
       {#if currentProfileDir}
         <p
           class="m-0 flex min-w-0 flex-1 items-center gap-1.5 text-xs text-foreground-muted"
@@ -116,22 +96,16 @@
       {/if}
       <div class="ml-auto flex flex-wrap gap-2">
         {#if currentProfileDir}
-          {@render toolbarButton(
-            "mdi:refresh",
-            "Reset folder",
-            "Reset to the default AppData folder",
-            "secondary",
-            handleResetFolder,
-          )}
+          <Button icon="mdi:refresh" tooltip="Reset to the default AppData folder" onclick={handleResetFolder}>
+            Reset folder
+          </Button>
         {/if}
-        {@render toolbarButton(
-          "mdi:folder-open",
-          "Open folder",
-          "Select a folder to view profiles",
-          "secondary",
-          handleOpenFolder,
-        )}
-        {@render toolbarButton("mdi:plus", "New profile", "Unavailable while profiles are rebuilt", "primary")}
+        <Button icon="mdi:folder-open" tooltip="Select a folder to view profiles" onclick={handleOpenFolder}>
+          Open folder
+        </Button>
+        <Button variant="primary" icon="mdi:plus" tooltip="Unavailable while profiles are rebuilt" disabled>
+          New profile
+        </Button>
       </div>
     {/snippet}
 
@@ -162,17 +136,15 @@
       />
     {:else}
       <div class="grid animate-fade-in grid-cols-cards gap-2">
+        <!-- The card() look, not Card: animate: needs an element as the each block's only child. -->
         {#each profiles as profile (profile.name + profile.created_at)}
-          {@const deleting = deletingProfile === profile.name}
           <div
-            class="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-3.5 transition-colors hover:border-border-hover"
+            class={card({ class: "flex min-w-0 flex-col gap-3 p-3.5 transition-colors hover:border-border-hover" })}
             out:pop
             animate:reflow
           >
             <div class="flex items-start gap-2.5">
-              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md {TONE_SOFT.accent}">
-                <Icon icon="mdi:file-cog" size="lg" />
-              </span>
+              <IconTile icon="mdi:file-cog" size="sm" />
               <div class="min-w-0 flex-1">
                 <h3 class="m-0 text-sm font-semibold wrap-break-word">{profile.name}</h3>
                 <p class="m-0 mt-0.5 line-clamp-2 text-xs text-foreground-muted">
@@ -186,17 +158,20 @@
                 Windows {profile.source_windows_version} · {formatDate(profile.created_at)}
               </span>
               <div class="flex gap-1.5">
+                <IconButton
+                  icon="mdi:delete"
+                  size="sm"
+                  tooltip="Delete {profile.name}"
+                  class={TONE_WASH.error}
+                  loading={deletingProfile === profile.name}
+                  onclick={() => handleDelete(profile.name)}
+                />
                 <Button
                   size="sm"
-                  variant="secondary"
-                  aria-label="Delete {profile.name}"
-                  onclick={() => handleDelete(profile.name)}
-                  loading={deleting}
+                  variant="primary"
+                  icon="mdi:play"
+                  onclick={() => openImport(profileStore.importSaved(profile.name))}
                 >
-                  {#if !deleting}<Icon icon="mdi:delete" size="md" />{/if}
-                </Button>
-                <Button size="sm" variant="primary" onclick={() => openImport(profileStore.importSaved(profile.name))}>
-                  <Icon icon="mdi:play" size="md" />
                   Apply
                 </Button>
               </div>
@@ -209,12 +184,10 @@
 
   {#if isDragOver}
     <div
-      class="absolute inset-0 z-scrim flex flex-col items-center justify-center bg-background/85"
+      class="absolute inset-0 z-scrim flex flex-col items-center justify-center {DROP_VEIL}"
       transition:fade={{ speed: "fast" }}
     >
-      <div class="flex h-24 w-24 items-center justify-center rounded-xl {TONE_SOFT.accent}">
-        <Icon icon="mdi:file-import" size="7xl" />
-      </div>
+      <IconTile icon="mdi:file-import" size="4xl" />
       <h2 class="mt-6 text-xl font-semibold">Drop to import profile</h2>
       <p class="mt-1 text-sm text-foreground-muted">Release the file to start importing</p>
     </div>

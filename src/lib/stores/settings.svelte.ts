@@ -16,7 +16,6 @@ const settingsState = new PersistentStore<AppSettings>(STORAGE_KEYS.settings, DE
 );
 
 const autoCheckUpdates = $derived(settingsState.value.autoCheckUpdates);
-const autoInstallUpdates = $derived(settingsState.value.autoInstallUpdates);
 const lastUpdateCheck = $derived(settingsState.value.lastUpdateCheck);
 const showUnsupported = $derived(settingsState.value.showUnsupported);
 const includePrereleases = $derived(settingsState.value.includePrereleases);
@@ -28,10 +27,6 @@ function update(changes: Partial<AppSettings>) {
 export const settingsStore = {
   get autoCheckUpdates() {
     return autoCheckUpdates;
-  },
-
-  get autoInstallUpdates() {
-    return autoInstallUpdates;
   },
 
   get lastUpdateCheck() {
@@ -56,10 +51,6 @@ export const settingsStore = {
 
   setAutoCheckUpdates(enabled: boolean) {
     update({ autoCheckUpdates: enabled });
-  },
-
-  setAutoInstallUpdates(enabled: boolean) {
-    update({ autoInstallUpdates: enabled });
   },
 
   setLastUpdateCheck(date: string | null) {

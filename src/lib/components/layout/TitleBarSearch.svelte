@@ -1,11 +1,11 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
-  import { Icon } from "$lib/components/shared";
-  import { SearchInput } from "$lib/components/ui";
+  import { SearchInput, ToggleChip } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
   import { tick } from "svelte";
+  import { fromAction } from "svelte/attachments";
 
   let searchEl = $state<HTMLInputElement | null>(null);
 
@@ -34,21 +34,19 @@
 </script>
 
 {#snippet scopeToggle()}
-  <button
-    type="button"
-    class="inline-flex max-w-9/20 shrink-0 animate-pop-in cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium {scoped
-      ? 'border-accent/40 bg-accent/15 text-accent hover:bg-accent/20'
-      : 'border-border-hover bg-muted text-foreground-muted hover:border-accent/50 hover:text-foreground'}"
+  <ToggleChip
+    variant={scoped ? "tint" : "quiet"}
+    icon={scoped ? "mdi:filter-variant" : "mdi:filter-variant-remove"}
+    class="max-w-9/20 shrink-0 animate-pop-in"
     aria-pressed={scoped}
     aria-label="Search only in {scopeName}"
-    use:tooltip={scoped
-      ? `Searching only in ${scopeName}. Select to search everywhere.`
-      : `Search only in ${scopeName}`}
+    {@attach fromAction(tooltip, () =>
+      scoped ? `Searching only in ${scopeName}. Select to search everywhere.` : `Search only in ${scopeName}`,
+    )}
     onclick={toggleScope}
   >
-    <Icon icon={scoped ? "mdi:filter-variant" : "mdi:filter-variant-remove"} size="2xs" class="shrink-0" />
     <span class="truncate">{scopeName}</span>
-  </button>
+  </ToggleChip>
 {/snippet}
 
 <SearchInput

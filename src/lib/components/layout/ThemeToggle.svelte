@@ -1,25 +1,30 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
+  import { iconButton } from "$lib/components/ui/variants";
   import type { IconName } from "$lib/design";
   import { themeStore } from "$lib/stores/theme.svelte";
   import { duration } from "$lib/utils/motion";
+  import { onDestroy } from "svelte";
 
   let isAnimating = $state(false);
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
   const label = $derived(`Switch to ${themeStore.current === "dark" ? "light" : "dark"} mode`);
+
+  onDestroy(() => clearTimeout(settleTimer));
 
   function toggleTheme() {
     if (isAnimating) return;
     isAnimating = true;
     themeStore.toggle();
-    setTimeout(() => (isAnimating = false), duration("slow"));
+    settleTimer = setTimeout(() => (isAnimating = false), duration("slow"));
   }
 </script>
 
 {#snippet icon(name: IconName, active: boolean)}
   <span
     class={[
-      "theme-icon absolute inset-0 flex items-center justify-center text-foreground-muted",
+      "theme-icon absolute inset-0 flex items-center justify-center",
       active ? "group-hover:text-accent" : "scale-50 -rotate-90 opacity-0",
     ]}
   >
@@ -34,7 +39,10 @@
   aria-label={label}
   onclick={toggleTheme}
   data-pressed={isAnimating || undefined}
-  class="theme-toggle group relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-[background-color,scale] hover:bg-accent/12 active:scale-[calc(1-2*var(--motion-scale-delta))] data-pressed:scale-[calc(1-2*var(--motion-scale-delta))]"
+  class={iconButton({
+    class:
+      "theme-toggle group relative transition-[background-color,scale] active:scale-pressed data-pressed:scale-pressed",
+  })}
 >
   <span class="relative h-4 w-4">
     {@render icon("tabler:moon", themeStore.current === "light")}

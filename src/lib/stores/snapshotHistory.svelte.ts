@@ -19,7 +19,7 @@ interface Listing {
  */
 export function createSnapshotHistory(tweak: () => TweakWithStatus | null, active: () => boolean) {
   let listing = $state<Listing | null>(null);
-  let busySeq = $state<number | null>(null);
+  let busy = $state<{ tweakId: string; seq: number } | null>(null);
   let latestRequest = 0;
 
   const own = $derived(listing?.tweakId === tweak()?.definition.id ? listing : null);
@@ -43,7 +43,7 @@ export function createSnapshotHistory(tweak: () => TweakWithStatus | null, activ
   });
 
   async function discard(tweakId: string, seq: number) {
-    busySeq = seq;
+    busy = { tweakId, seq };
     try {
       await tweaksApi.discardSnapshotEntry(tweakId, seq);
       if (listing?.tweakId === tweakId) {
@@ -57,7 +57,7 @@ export function createSnapshotHistory(tweak: () => TweakWithStatus | null, activ
     } catch (error) {
       toastStore.failure("Failed to discard snapshot entry", error);
     } finally {
-      busySeq = null;
+      busy = null;
     }
   }
 
@@ -75,8 +75,8 @@ export function createSnapshotHistory(tweak: () => TweakWithStatus | null, activ
     get visible(): boolean {
       return !!tweak()?.status.hasHistory || (own !== null && (own.entries.length > 0 || own.error !== null));
     },
-    get busySeq(): number | null {
-      return busySeq;
+    isBusy(seq: number): boolean {
+      return busy?.seq === seq && busy.tweakId === tweak()?.definition.id;
     },
 
     async discardWithConfirm(seq: number): Promise<void> {

@@ -143,6 +143,9 @@ const tweaksByCategory = $derived.by(() => {
 const categoryStats = $derived(
   Object.fromEntries(categories.map((cat) => [cat.id, tallies(tweaksByCategory[cat.id] ?? [])])),
 );
+const attentionCategoryIds = $derived(
+  categories.filter((cat) => categoryStats[cat.id].attention > 0).map((cat) => cat.id),
+);
 
 export const categoriesStore = {
   get list() {
@@ -152,6 +155,11 @@ export const categoriesStore = {
   /** Tallies of the visible tweaks, per category id. */
   get stats() {
     return categoryStats;
+  },
+
+  /** Ids of the categories holding a tweak that needs attention, in sidebar order. */
+  get withAttention(): string[] {
+    return attentionCategoryIds;
   },
 
   /** The id itself when unknown. */

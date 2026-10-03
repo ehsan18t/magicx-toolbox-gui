@@ -17,6 +17,9 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 const PROFILE_FILTERS = [{ name: "MagicX Profile", extensions: [PROFILE_EXT] }];
 const DEFAULT_PROFILE_SUBDIR = "profiles";
 
+/** The toast for a dropped file that is not a profile. */
+export const PROFILE_FILE_REJECTED = `Only .${PROFILE_EXT} profile files can be imported.`;
+
 const profileFileName = (name: string) => `${name.replace(/[^a-z0-9\-_]/gi, "")}.${PROFILE_EXT}`;
 
 let isExporting = $state(false);

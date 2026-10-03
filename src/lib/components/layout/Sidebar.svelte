@@ -2,7 +2,9 @@
   import { overflowHints } from "$lib/actions/overflowHints";
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import type { IconName } from "$lib/design";
+  import { IconButton } from "$lib/components/ui";
+  import { card } from "$lib/components/ui/variants";
+  import { type IconName, type TextTone, TONE_TEXT } from "$lib/design";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { navigationStore, type TabDefinition, type TabId } from "$lib/stores/navigation.svelte";
@@ -10,7 +12,9 @@
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
+  import { isComplete } from "$lib/utils/categoryStats";
   import { plural } from "$lib/utils/format";
+  import { SEP } from "$lib/utils/tweakPresentation";
   import { fade, reducedMotion } from "$lib/utils/motion";
 
   interface NavItem {
@@ -19,7 +23,7 @@
     active: boolean;
     onclick: () => void;
     trailing?: string;
-    trailingTone?: string;
+    trailingTone?: TextTone;
     alert?: string;
     pending?: string;
   }
@@ -48,14 +52,7 @@
   });
   const fadeFrom = $derived(sidebarStore.isOverlay ? "from-elevated" : "from-background");
   // Markers mean "act here": attention, or changes staged but not applied. Nothing else gets one.
-  const pendingByCategory = $derived.by(() => {
-    const counts: Record<string, number> = {};
-    for (const change of pendingChangesStore.all.values()) {
-      const category = tweaksStore.tweak(change.tweakId)?.definition.categoryId;
-      if (category) counts[category] = (counts[category] ?? 0) + 1;
-    }
-    return counts;
-  });
+  const pendingByCategory = $derived(pendingChangesStore.countByCategory);
 
   function go(tab: TabDefinition) {
     navigationStore.navigateToTab(tab.id);
@@ -113,7 +110,7 @@
   active,
   onclick,
   trailing = "",
-  trailingTone = "text-foreground-subtle",
+  trailingTone = "subtle",
   alert = "",
   pending = "",
 }: NavItem)}
@@ -125,8 +122,8 @@
     aria-current={active ? "page" : undefined}
     aria-label={[label, trailing, alert, pending].filter(Boolean).join(", ")}
     use:tooltip={isOpen
-      ? [alert, pending].filter(Boolean).join(" · ") || null
-      : [label, trailing, alert, pending].filter(Boolean).join(" · ")}
+      ? [alert, pending].filter(Boolean).join(SEP) || null
+      : [label, trailing, alert, pending].filter(Boolean).join(SEP)}
     {onclick}
   >
     <span class="relative flex w-5 shrink-0 justify-center">
@@ -146,7 +143,7 @@
         {@render dot("shrink-0 bg-warning")}
       {/if}
       {#if trailing}
-        <span class="shrink-0 text-xs tabular-nums {trailingTone}">{trailing}</span>
+        <span class="shrink-0 text-xs tabular-nums {TONE_TEXT[trailingTone]}">{trailing}</span>
       {/if}
     {/if}
   </button>
@@ -155,7 +152,7 @@
 {#if sidebarStore.isOverlay}
   <button
     type="button"
-    class="fixed inset-x-0 top-titlebar bottom-0 z-scrim animate-fade-in cursor-default bg-black/20"
+    class="fixed inset-x-0 top-titlebar bottom-0 z-scrim animate-fade-in cursor-default bg-scrim-light"
     aria-label="Close navigation"
     tabindex="-1"
     onclick={() => sidebarStore.closeOverlay()}
@@ -164,13 +161,17 @@
 
 <nav
   class="relative h-full shrink-0 transition-[width] duration-slow ease-out {sidebarStore.isDockedExpanded
-    ? 'w-64'
+    ? 'w-sidebar'
     : 'w-rail'}"
   aria-label="Main"
 >
   <div
     class="flex h-full flex-col {sidebarStore.isOverlay
-      ? 'absolute inset-y-0 left-0 z-drawer w-72 rounded-r-lg border border-l-0 border-border bg-elevated shadow-flyout transition-[width] duration-slow ease-out'
+      ? card({
+          elevation: 'flyout',
+          class:
+            'absolute inset-y-0 left-0 z-drawer w-drawer rounded-l-none border-l-0 transition-[width] duration-slow ease-out',
+        })
       : 'w-full'}"
   >
     <div class="relative flex min-h-0 flex-1 flex-col">
@@ -209,14 +210,13 @@
 
         {#each navigationStore.categoryTabs as tab (tab.id)}
           {@const s = categoryStats[tab.id]}
-          {@const complete = !!s && s.total > 0 && s.applied === s.total}
           {@render navItem({
             label: tab.name,
             icon: tab.icon,
             active: activeTab === tab.id,
             onclick: () => go(tab),
             trailing: s ? `${s.applied}/${s.total}` : "",
-            trailingTone: complete ? "text-success" : undefined,
+            trailingTone: s && isComplete(s) ? "success" : undefined,
             alert: s?.attention ? `${plural(s.attention, "needs", "need")} attention` : "",
             pending: pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : "",
           })}
@@ -243,19 +243,18 @@
           transition:fade={{ speed: "fast" }}
           class="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-linear-to-t from-40% to-transparent pb-1 {fadeFrom}"
         >
-          <button
-            type="button"
-            class="pointer-events-auto flex h-6 w-8 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
-            aria-label="Scroll for more"
-            use:tooltip={"More below"}
+          <IconButton
+            icon="mdi:chevron-down"
+            size="sm"
+            label="Scroll for more"
+            tooltip="More below"
+            class="pointer-events-auto"
             onclick={() =>
               scrollEl?.scrollBy({
                 top: scrollEl.clientHeight * SCROLL_PAGE_FRACTION,
                 behavior: reducedMotion() ? "auto" : "smooth",
               })}
-          >
-            <Icon icon="mdi:chevron-down" size="lg" />
-          </button>
+          />
         </div>
       {/if}
     </div>
@@ -266,24 +265,24 @@
         : 'flex-col'}"
     >
       {#each footerItems as item (item.label)}
-        <button
-          type="button"
-          class="relative flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-muted hover:text-foreground {isOpen
-            ? 'flex-1'
-            : 'w-full'} {item.active ? 'bg-muted text-accent' : 'text-foreground-muted'}"
-          aria-label={item.label}
-          aria-current={item.active ? "page" : undefined}
-          use:tooltip={item.label}
-          onclick={() => {
-            sidebarStore.closeOverlay();
-            item.open();
-          }}
-        >
-          <Icon icon={item.icon} size="lg" />
+        <div class="relative shrink-0 {isOpen ? 'flex-1' : ''}">
+          <IconButton
+            icon={item.icon}
+            tooltip={item.label}
+            active={item.active}
+            aria-current={item.active ? "page" : undefined}
+            class="h-9 w-full {item.active ? 'bg-muted' : ''}"
+            onclick={() => {
+              sidebarStore.closeOverlay();
+              item.open();
+            }}
+          />
           {#if item.dot}
-            {@render dot("absolute top-1.5 right-1/2 translate-x-3 animate-pop-in bg-success ring-2 ring-background")}
+            {@render dot(
+              "pointer-events-none absolute top-1.5 right-1/2 translate-x-3 animate-pop-in bg-success ring-2 ring-background",
+            )}
           {/if}
-        </button>
+        </div>
       {/each}
     </div>
   </div>

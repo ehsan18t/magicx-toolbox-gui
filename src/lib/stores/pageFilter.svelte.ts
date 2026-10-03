@@ -11,7 +11,8 @@ const set = (query: string, scoped: boolean) => (filter = { visit: navigationSto
 
 const scoped = $derived(navigationStore.isScopable && (!isCurrent() || filter.scoped));
 const query = $derived(isCurrent() ? filter.query : "");
-const matches = $derived(scoped && query.trim() ? searchStore.fuzzyMatches(query) : null);
+const trimmedQuery = $derived(query.trim());
+const matches = $derived(scoped && trimmedQuery ? searchStore.fuzzyMatches(query) : null);
 const originTab = $derived(
   origin && origin.visit === navigationStore.visit && navigationStore.activeTab === "search" ? origin.tab : null,
 );
@@ -23,6 +24,9 @@ export const pageFilterStore = {
   },
   get query(): string {
     return query;
+  },
+  get trimmedQuery(): string {
+    return trimmedQuery;
   },
   /** The page the scope chip names: the current list page, or the one a global search came from. */
   get chipTab(): TabId | null {

@@ -1,4 +1,4 @@
-import type { IconName, Tone } from "$lib/design";
+import type { IconName, TextTone, Tone } from "$lib/design";
 import type {
   Attention,
   Availability,
@@ -12,7 +12,20 @@ import type {
 } from "$lib/types";
 import { plural } from "$lib/utils/format";
 
-export const CHECKING = { label: "Checking", icon: "mdi:loading" } as const;
+/** Joins the parts of a one-line summary. */
+export const SEP = " · ";
+export const SYSTEM_DEFAULT_LABEL = "System default";
+
+/** One fact on an item's meta line: MetaItem's props. */
+export interface MetaFact {
+  icon: IconName;
+  label: string;
+  tone?: TextTone;
+  tooltip?: string;
+  spin?: boolean;
+}
+
+export const CHECKING: MetaFact = { label: "Checking…", icon: "mdi:loading", tone: "neutral", spin: true };
 export const UNKNOWN_ICON = "mdi:help-circle-outline";
 export const UNKNOWN_NEEDS_ADMIN = "Unknown, needs admin";
 export const ELEVATE_HINT = "Restart as administrator to resolve.";
@@ -42,28 +55,30 @@ export const RISK_TONE: Record<RiskLevel, Tone> = {
 
 export const isHighRisk = (level: RiskLevel): boolean => level === "high" || level === "critical";
 
-export interface PermissionInfo {
-  name: string;
-  description: string;
-  icon: IconName;
-}
+export const riskFact = (level: RiskLevel): MetaFact => ({
+  icon: "mdi:shield-half-full",
+  label: `${RISK_INFO[level].name} risk`,
+  tone: RISK_TONE[level],
+  tooltip: RISK_INFO[level].description,
+});
 
-const PERMISSION_INFO: Record<Exclude<Level, "User">, PermissionInfo> = {
+const PERMISSION_FACT: Record<Level, MetaFact> = {
+  User: { icon: "mdi:account", label: "Standard user", tone: "neutral" },
   Admin: {
-    name: "Admin",
-    description: "Requires Administrator privileges to apply",
     icon: "mdi:shield-account-outline",
+    label: "Admin",
+    tone: "neutral",
+    tooltip: "Requires Administrator privileges to apply",
   },
   Ti: {
-    name: "TrustedInstaller",
-    description: "Requires TrustedInstaller elevation for highly protected resources",
     icon: "mdi:shield-key",
+    label: "TrustedInstaller",
+    tone: "neutral",
+    tooltip: "Requires TrustedInstaller elevation for highly protected resources",
   },
 };
 
-export function permissionInfoFor(level: Level): PermissionInfo | null {
-  return level === "User" ? null : PERMISSION_INFO[level];
-}
+export const permissionFact = (level: Level): MetaFact => PERMISSION_FACT[level];
 
 const ATTENTION_CAUSE: Record<Attention["reason"], string> = {
   apply_failed: "The last apply couldn't be fully verified",
@@ -86,6 +101,17 @@ export const labelsOf = (def: TweakDefinition): string[] => def.options.map((o) 
 export const usesDropdown = (def: TweakDefinition): boolean => def.options.length > SEGMENTED_MAX;
 
 export const rowDomId = (kind: ItemKind, id: string): string => `${kind}-${id}`;
+
+/** Groups in first-seen order, so a sorted list stays sorted. */
+export function groupByCategory(tweaks: TweakWithStatus[]): [categoryId: string, tweaks: TweakWithStatus[]][] {
+  const groups = new Map<string, TweakWithStatus[]>();
+  for (const t of tweaks) {
+    const group = groups.get(t.definition.categoryId);
+    if (group) group.push(t);
+    else groups.set(t.definition.categoryId, [t]);
+  }
+  return [...groups];
+}
 
 /** A bulk restore takes only these: each row's own Restore is disabled otherwise. */
 export const canRestore = (t: TweakWithStatus): boolean =>
@@ -125,18 +151,10 @@ export function tallies(list: TweakWithStatus[]): Tallies {
   return t;
 }
 
-export interface StateSummary {
-  label: string;
-  tone: Tone;
-  icon: IconName;
-  spin?: boolean;
-}
-
 export const unavailableReason = (status: TweakStatus): string =>
   status.unavailableReason ?? "Not available on this system";
 
-/** The tooltip on a row's state line. */
-export function stateTip(status: TweakStatus): string {
+function stateTip(status: TweakStatus): string {
   switch (status.state) {
     case "unknown": {
       const causes = status.unknownReasons.map((r) => `${r.effect}: ${r.cause}`).join("; ");
@@ -151,43 +169,108 @@ export function stateTip(status: TweakStatus): string {
 }
 
 // Each switch keeps a default: a state added in Rust must not crash the rows.
-export function stateSummary(status: TweakStatus): StateSummary {
+function stateLook(status: TweakStatus): MetaFact {
   switch (status.state) {
     case "active":
       return { label: status.activeOption ?? "Active", tone: "accent", icon: "mdi:check-circle" };
     case "system_default":
-      return { label: "System default", tone: "neutral", icon: "mdi:monitor" };
+      return { label: SYSTEM_DEFAULT_LABEL, tone: "neutral", icon: "mdi:monitor" };
     case "unavailable":
       return { label: "Unavailable", tone: "neutral", icon: "mdi:cancel" };
     case "unknown":
       return { label: status.needsElevation ? UNKNOWN_NEEDS_ADMIN : "Unknown", tone: "warning", icon: UNKNOWN_ICON };
     case "loading":
     default:
-      return { label: CHECKING.label, tone: "neutral", icon: CHECKING.icon };
+      return CHECKING;
   }
 }
 
-/** Whether a row's Restore can run, and what its tooltip says. */
+export const stateSummary = (status: TweakStatus): MetaFact => ({ ...stateLook(status), tooltip: stateTip(status) });
+
+export const residueText = (status: TweakStatus): string =>
+  `Residual settings remain outside the active option: ${status.residues.join(", ")}`;
+
+/** Finds any tweak by id, e.g. `tweaksStore.tweak`. */
+export type TweakLookup = (tweakId: string) => TweakWithStatus | undefined;
+
+/** Names each holder, falling back to its id. */
+export function heldSharedText(status: TweakStatus, find: TweakLookup): string {
+  const name = (id: string) => find(id)?.definition.name ?? id;
+  return `Shared settings held: ${status.heldShared.map((h) => `${h.shared} (${h.holders.map(name).join(", ")})`).join("; ")}`;
+}
+
+export const pendingFact = (optionLabel: string): MetaFact => ({
+  icon: "mdi:arrow-right",
+  label: `${optionLabel} pending`,
+  tone: "warning",
+  tooltip: "Staged, not applied yet",
+});
+
+/** Every fact a tweak's meta line can show; the row and the details header each pick theirs. */
+export interface TweakMeta {
+  state: MetaFact;
+  risk: MetaFact;
+  permission: MetaFact;
+  restart: MetaFact | null;
+  irreversible: MetaFact | null;
+  /** Null while the state already says the tweak is unavailable. */
+  availability: MetaFact | null;
+  residue: MetaFact | null;
+  shared: MetaFact | null;
+  snapshot: MetaFact;
+}
+
+export function tweakMeta({ definition: def, status }: TweakWithStatus, find: TweakLookup): TweakMeta {
+  const { availability } = def;
+  return {
+    state: stateSummary(status),
+    risk: riskFact(def.riskLevel),
+    permission: permissionFact(def.requiredLevel),
+    restart: def.requiresReboot
+      ? { icon: "mdi:restart", label: "Restart", tone: "info", tooltip: "Restart required after applying or restoring" }
+      : null,
+    irreversible: def.reversible ? null : { icon: "mdi:undo-variant", label: "Not reversible", tone: "warning" },
+    availability:
+      availability.state !== "available" && status.state !== "unavailable"
+        ? {
+            icon: "mdi:shield-lock-outline",
+            label: availabilityLabel(availability),
+            tone: "warning",
+            tooltip: availability.reason,
+          }
+        : null,
+    residue: status.residues.length
+      ? { icon: "mdi:information-outline", label: "Residue", tone: "info", tooltip: residueText(status) }
+      : null,
+    shared: status.heldShared.length
+      ? { icon: "mdi:link-variant", label: "Shared", tone: "neutral", tooltip: heldSharedText(status, find) }
+      : null,
+    snapshot: status.hasHistory
+      ? { icon: "mdi:history", label: "Snapshot saved", tone: "neutral" }
+      : { icon: "mdi:history", label: "No snapshot", tone: "subtle" },
+  };
+}
+
+/** Whether a tweak's Restore can run, and how it reads. */
 export interface RestoreState {
+  label: string;
   disabled: boolean;
   tip: string;
 }
 
 export function restoreState(def: TweakDefinition, status: TweakStatus, isRunning: boolean): RestoreState {
-  if (def.availability.state !== "available") return { disabled: true, tip: def.availability.reason };
+  const retry = status.attention?.reason === "restore_failed";
+  const label = retry ? "Retry restore" : "Restore";
+  if (def.availability.state !== "available") return { label, disabled: true, tip: def.availability.reason };
   return {
+    label,
     disabled: isRunning,
-    tip:
-      status.attention?.reason === "restore_failed"
-        ? "Retry restoring the saved state"
-        : "Restore the state saved before the last change",
+    tip: retry ? "Retry restoring the saved state" : "Restore the state saved before the last change",
   };
 }
 
-export function availabilityLabel(availability: Availability): string {
+function availabilityLabel(availability: Exclude<Availability, { state: "available" }>): string {
   switch (availability.state) {
-    case "available":
-      return "";
     case "sid_mismatch":
       return "Different account";
     case "sid_unknown":

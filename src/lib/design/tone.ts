@@ -58,3 +58,25 @@ export const TONE_WASH: Record<FillTone, string> = {
   warning: "enabled:hover:bg-warning/10 enabled:hover:text-warning",
   error: "enabled:hover:bg-error/10 enabled:hover:text-error",
 };
+
+/** An item card's border while it is the selected one or holds a staged change. */
+export const EMPHASIS_BORDER = {
+  selected: "border-accent/70",
+  pending: "border-warning/45",
+} as const;
+
+/** A highlighted table column: the live values, the applied option, or the staged one. */
+export type ColumnTone = "now" | "current" | "pending";
+
+/** The header sits a step above its cells. */
+export const COLUMN_TINT: Record<ColumnTone, { head: string; cell: string }> = {
+  now: { head: "bg-warning/8", cell: "bg-warning/5" },
+  current: { head: "bg-accent/12", cell: "bg-accent/8" },
+  pending: { head: "bg-warning/10", cell: "bg-warning/6" },
+};
+
+/** A table's header row. */
+export const TABLE_HEAD = "bg-muted/40";
+
+/** Veils the page under a dragged file, leaving it faintly visible. */
+export const DROP_VEIL = "bg-background/85";

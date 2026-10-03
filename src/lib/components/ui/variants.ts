@@ -30,6 +30,7 @@ export const button = tv({
     /** Text colour on a neutral variant, e.g. a secondary Remove in error. */
     tone: {
       accent: "text-accent enabled:hover:text-accent",
+      warning: "text-warning enabled:hover:text-warning",
       error: "text-error enabled:hover:text-error",
     },
   },

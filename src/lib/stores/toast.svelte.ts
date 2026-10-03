@@ -25,7 +25,8 @@ interface ToastOptions {
   action?: ToastAction;
 }
 
-export const TOAST_DURATION = { default: 3000, error: 5000, long: 10000 } as const;
+/** Milliseconds per severity; `long` for a toast with something to act on. */
+export const TOAST_DURATION = { success: 3000, info: 3000, warning: 5000, error: 5000, long: 10000 } as const;
 
 const MAX_TOASTS = 5;
 
@@ -46,7 +47,7 @@ function dismiss(id: string) {
 
 function show(type: ToastType, message: string, options?: ToastOptions) {
   const id = `toast-${++idCounter}`;
-  const duration = options?.duration ?? (type === "error" ? TOAST_DURATION.error : TOAST_DURATION.default);
+  const duration = options?.duration ?? TOAST_DURATION[type];
 
   while (toasts.length >= MAX_TOASTS) {
     clearTimer(toasts[0].id);

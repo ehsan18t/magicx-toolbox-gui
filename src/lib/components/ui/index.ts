@@ -31,4 +31,4 @@ export { default as TextArea } from "./TextArea.svelte";
 export { default as TextField } from "./TextField.svelte";
 export { default as ToggleChip } from "./ToggleChip.svelte";
 export type { SegmentOption, SelectOption } from "./types";
-export { textLink, type IconButtonSize } from "./variants";
+export { textLink, type ButtonVariants, type IconButtonSize } from "./variants";

@@ -1,14 +1,16 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import type { IconName } from "$lib/design";
+  import { IconButton, LinkButton } from "$lib/components/ui";
+  import { card } from "$lib/components/ui/variants";
+  import { type IconName, TONE_TEXT } from "$lib/design";
   import { toastStore, type ToastType } from "$lib/stores/toast.svelte";
   import { reflow, shift } from "$lib/utils/motion";
 
-  const typeConfig: Record<ToastType, { icon: IconName; color: string; stripe: string }> = {
-    success: { icon: "mdi:check-circle", color: "text-success", stripe: "bg-success" },
-    error: { icon: "mdi:alert-circle", color: "text-error", stripe: "bg-error" },
-    warning: { icon: "mdi:alert", color: "text-warning", stripe: "bg-warning" },
-    info: { icon: "mdi:information", color: "text-info", stripe: "bg-info" },
+  const typeConfig: Record<ToastType, { icon: IconName; stripe: string }> = {
+    success: { icon: "mdi:check-circle", stripe: "bg-success" },
+    error: { icon: "mdi:alert-circle", stripe: "bg-error" },
+    warning: { icon: "mdi:alert", stripe: "bg-warning" },
+    info: { icon: "mdi:information", stripe: "bg-info" },
   };
 </script>
 
@@ -22,13 +24,16 @@
   {#each toastStore.list as toast (toast.id)}
     {@const config = typeConfig[toast.type]}
     <div
-      class="relative flex w-toast items-start gap-3 overflow-hidden rounded-lg border border-border bg-elevated py-3 pr-2 pl-4 shadow-flyout"
+      class={card({
+        elevation: "flyout",
+        class: "relative flex w-toast items-start gap-3 overflow-hidden py-3 pr-2 pl-4",
+      })}
       role={toast.type === "error" ? "alert" : "status"}
       transition:shift={{ from: "right", by: "lg" }}
       animate:reflow
     >
       <span class="absolute inset-y-0 left-0 w-1 {config.stripe}" aria-hidden="true"></span>
-      <Icon icon={config.icon} size="lg" class="mt-px shrink-0 {config.color}" />
+      <Icon icon={config.icon} size="lg" class="mt-px shrink-0 {TONE_TEXT[toast.type]}" />
       <div class="min-w-0 flex-1">
         {#if toast.subject}
           <div class="text-xs font-medium text-foreground-muted">{toast.subject}</div>
@@ -36,26 +41,24 @@
         <div class="text-ui wrap-break-word text-foreground">{toast.message}</div>
         {#if toast.action}
           {@const action = toast.action}
-          <button
-            type="button"
-            class="mt-1.5 cursor-pointer rounded border-0 bg-transparent p-0 text-sm font-medium text-accent underline-offset-2 hover:underline"
+          <LinkButton
+            variant="hover"
+            class="mt-1.5 text-sm text-accent"
             onclick={() => {
               action.run();
               toastStore.dismiss(toast.id);
             }}
           >
             {action.label}
-          </button>
+          </LinkButton>
         {/if}
       </div>
-      <button
-        type="button"
-        class="shrink-0 cursor-pointer rounded border-0 bg-transparent p-1 text-foreground-muted hover:bg-muted hover:text-foreground"
+      <IconButton
+        icon="mdi:close"
+        size="xs"
+        label="Dismiss notification"
         onclick={() => toastStore.dismiss(toast.id)}
-        aria-label="Dismiss notification"
-      >
-        <Icon icon="mdi:close" size="md" />
-      </button>
+      />
     </div>
   {/each}
 </div>

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { AppRow, MetaItem, TweakRow } from "$lib/components/tweaks";
-  import { EmptyState } from "$lib/components/ui";
+  import { AppRow, MetaItem, TweakRow } from "$lib/components/items";
+  import { EmptyState, LinkButton } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { type SearchResult, searchStore } from "$lib/stores/search.svelte";
@@ -43,15 +43,15 @@
 
 {#snippet location(result: MappedResult)}
   <MetaItem icon={categoriesStore.icon(result.searchResult.categoryId)} label={result.categoryName} tone="neutral" />
-  <button
-    type="button"
-    class="inline-flex cursor-pointer items-center gap-1 rounded px-1 text-accent hover:underline"
+  <LinkButton
+    variant="hover"
+    class="inline-flex items-center gap-1 text-accent"
     aria-label="Go to {result.name} in {result.categoryName}"
     onclick={() => goToItem(result.searchResult)}
   >
     Go to
     <Icon icon="mdi:arrow-right" size="2xs" />
-  </button>
+  </LinkButton>
 {/snippet}
 
 <PageLayout title="Search" {description}>

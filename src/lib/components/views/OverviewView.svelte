@@ -3,18 +3,18 @@
 </script>
 
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
   import { type IconName, type TextTone, TONE_TEXT } from "$lib/design";
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { Meter, SectionCard } from "$lib/components/ui";
+  import { Card, IconButton, Meter, SectionCard } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { systemStore } from "$lib/stores/system.svelte";
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
+  import { isComplete } from "$lib/utils/categoryStats";
   import { formatDate } from "$lib/utils/time";
   import { systemInfoRows, type HardwareRow } from "$lib/utils/systemInfoRows";
-  import { tallies } from "$lib/utils/tweakPresentation";
+  import { CHECKING, tallies } from "$lib/utils/tweakPresentation";
 
   interface Tile {
     label: string;
@@ -23,8 +23,7 @@
     icon: IconName;
     tone: TextTone;
     onclick?: () => void;
-    /** Percent, drawn as a meter under the value. */
-    progress?: number;
+    meter?: { value: number; max: number };
   }
 
   const info = $derived(systemStore.info);
@@ -32,22 +31,19 @@
   const rows = $derived(info ? systemInfoRows(info) : null);
 
   const stats = $derived(tallies(tweaksStore.list));
-  const attentionCategories = $derived(
-    new Set(tweaksStore.list.filter((t) => t.status.attention).map((t) => t.definition.categoryId)),
-  );
 
   // "All verified" only once every state is read: loading and unknown are not verified.
   const attentionTile = $derived.by((): Pick<Tile, "sub" | "tone" | "onclick"> => {
     if (stats.attention) {
-      const [first] = attentionCategories;
-      const more = attentionCategories.size - 1;
+      const [first, ...rest] = categoriesStore.withAttention;
+      const more = rest.length;
       return {
         sub: `in ${categoriesStore.name(first)}${more ? ` and ${more} more` : ""}`,
         tone: "error",
         onclick: () => navigationStore.navigateToAttention(first),
       };
     }
-    if (stats.byState.loading || tweaksStore.isLoading) return { sub: "Checking…", tone: "neutral" };
+    if (stats.byState.loading || tweaksStore.isLoading) return { sub: CHECKING.label, tone: "neutral" };
     if (stats.byState.unknown) return { sub: `${stats.byState.unknown} could not be read`, tone: "warning" };
     return { sub: "All verified", tone: "success" };
   });
@@ -59,7 +55,7 @@
       sub: `of ${stats.total} tweaks`,
       icon: "mdi:check-circle",
       tone: "accent",
-      progress: stats.total ? (stats.applied / stats.total) * 100 : undefined,
+      meter: stats.total ? { value: stats.applied, max: stats.total } : undefined,
     },
     { label: "Needs attention", value: stats.attention, icon: "mdi:alert-circle", ...attentionTile },
     {
@@ -107,10 +103,7 @@
     ? `${info.computer_name} · ${info.username} (${info.is_admin ? "Administrator" : "Standard user"})`
     : "Your PC at a glance"}
 >
-  <section
-    class="grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-card *:border-border sm:grid-cols-4 sm:[&>*:not(:last-child)]:border-r max-sm:[&>*:nth-child(-n+2)]:border-b max-sm:[&>*:nth-child(odd)]:border-r"
-    aria-label="Your tweaks"
-  >
+  <Card as="section" class="grid grid-cols-2 gap-px overflow-hidden bg-border sm:grid-cols-4" aria-label="Your tweaks">
     {#each tiles as t (t.label)}
       {#snippet tileBody()}
         <span class="flex items-center gap-1.5 text-xs text-foreground-muted">
@@ -121,23 +114,23 @@
           <span class="font-display text-xl leading-none font-semibold tabular-nums">{t.value}</span>
           <span class="truncate text-xs text-foreground-muted" title={t.sub}>{t.sub}</span>
         </span>
-        {#if t.progress !== undefined}
-          <Meter value={t.progress} label={t.label} class="mt-2 w-full" />
+        {#if t.meter}
+          <Meter {...t.meter} label={t.label} class="mt-2 w-full" />
         {/if}
       {/snippet}
       {#if t.onclick}
         <button
           type="button"
-          class="flex min-w-0 cursor-pointer flex-col items-start px-3 py-2.5 text-left hover:bg-muted"
+          class="flex min-w-0 cursor-pointer flex-col items-start bg-card px-3 py-2.5 text-left hover:bg-muted"
           onclick={t.onclick}
         >
           {@render tileBody()}
         </button>
       {:else}
-        <div class="flex min-w-0 flex-col items-start px-3 py-2.5">{@render tileBody()}</div>
+        <div class="flex min-w-0 flex-col items-start bg-card px-3 py-2.5">{@render tileBody()}</div>
       {/if}
     {/each}
-  </section>
+  </Card>
 
   <div class="@container">
     <div class="grid items-start gap-3 @min-overview-split:grid-cols-2">
@@ -166,10 +159,7 @@
                 </span>
                 <Meter value={s.applied} max={s.total} label={category.name} />
                 <span
-                  class={[
-                    "text-right text-xs tabular-nums",
-                    s.total > 0 && s.applied === s.total ? "text-success" : "text-foreground-muted",
-                  ]}
+                  class={["text-right text-xs tabular-nums", isComplete(s) ? "text-success" : "text-foreground-muted"]}
                 >
                   {s.applied}/{s.total}
                 </span>
@@ -181,18 +171,17 @@
 
       <SectionCard title="This PC">
         {#snippet actions()}
-          <button
-            type="button"
-            class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            onclick={refresh}
-            disabled={systemLoading || systemStore.isRefreshing}
-            aria-label="Refresh system info"
-            use:tooltip={systemStore.cachedAt && !systemLoading
+          <IconButton
+            icon="mdi:refresh"
+            size="sm"
+            label="Refresh system info"
+            tooltip={systemStore.cachedAt && !systemLoading
               ? `Updated ${formatDate(systemStore.cachedAt, { time: "seconds" })}. Select to refresh.`
               : "Refresh system info"}
-          >
-            <Icon icon="mdi:refresh" size="md" class={systemStore.isRefreshing ? "animate-spin" : ""} />
-          </button>
+            loading={systemStore.isRefreshing}
+            disabled={systemLoading}
+            onclick={refresh}
+          />
         {/snippet}
         {#if systemLoading || !rows}
           <div class="space-y-2 p-3">

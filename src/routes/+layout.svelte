@@ -21,8 +21,9 @@
   let initError = $state<string | null>(null);
 
   function handleGlobalKeydown(e: KeyboardEvent) {
-    // `code`, not `key`: a non-Latin layout reports another letter for the K key.
-    if ((e.ctrlKey || e.metaKey) && e.code === "KeyK") {
+    // `key` follows the layout (Dvorak's K is not on KeyK); `code` only when the key is no Latin letter.
+    const isK = e.key.toLowerCase() === "k" || (!/^[a-z]$/i.test(e.key) && e.code === "KeyK");
+    if ((e.ctrlKey || e.metaKey) && isK) {
       e.preventDefault();
       navigationStore.focusSearch();
     }
@@ -77,9 +78,7 @@
   <TitleBar />
   <div class="min-h-0 flex-1">
     {#if initError}
-      <div class="flex min-h-full items-center justify-center p-6">
-        <LoadError message={initError} />
-      </div>
+      <LoadError message={initError} />
     {:else}
       {@render children()}
     {/if}

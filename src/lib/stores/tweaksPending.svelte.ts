@@ -5,6 +5,15 @@ import { tweaksStore } from "./tweaksData.svelte";
 /** Staged but not applied. */
 const pendingChanges = new SvelteMap<string, PendingChange>();
 
+const countByCategory = $derived.by(() => {
+  const counts: Record<string, number> = {};
+  for (const { tweakId } of pendingChanges.values()) {
+    const category = tweaksStore.tweak(tweakId)?.definition.categoryId;
+    if (category) counts[category] = (counts[category] ?? 0) + 1;
+  }
+  return counts;
+});
+
 const pendingReboot = new SvelteSet<string>();
 
 // The full list, hidden tweaks included, so it always matches `count`.
@@ -17,6 +26,11 @@ export const pendingChangesStore = {
 
   get count() {
     return pendingChanges.size;
+  },
+
+  /** Staged changes per category id; a category with none is absent. */
+  get countByCategory(): Readonly<Record<string, number>> {
+    return countByCategory;
   },
 
   change(tweakId: string): PendingChange | undefined {

@@ -16,15 +16,16 @@
 </script>
 
 <script lang="ts">
+  import { autoScroll } from "$lib/actions/autoScroll";
   import { PageLayout } from "$lib/components/layout";
-  import { Icon } from "$lib/components/shared";
-  import { Badge, Button, Card, Spinner } from "$lib/components/ui";
+  import { Badge, Button, Card, InlineCode, Spinner, TextField } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { manualTestsStore } from "$lib/stores/manualTests.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import type { ManualTest } from "$lib/types";
   import { copyText } from "$lib/utils/clipboard";
-  import type { Attachment } from "svelte/attachments";
+
+  const uid = $props.id();
 
   let minutes = $state<Record<string, number>>({});
 
@@ -58,17 +59,10 @@
   async function copyReport(id: string) {
     if (await copyText(manualTestsStore.report(id), "Could not copy the report")) toastStore.success("Report copied");
   }
-
-  // Re-runs whenever the line count changes, keeping the newest line in view.
-  function stickToBottom(lines: number): Attachment<HTMLElement> {
-    return (node) => {
-      if (lines > 0) node.scrollTop = node.scrollHeight;
-    };
-  }
 </script>
 
 <PageLayout
-  title="Manual Tests"
+  title="Manual tests"
   description="Test build only. Run the app as administrator, run one test at a time, then copy its report."
 >
   {#each manualTestsStore.tests as test (test.id)}
@@ -76,13 +70,14 @@
     {@const result = manualTestsStore.result(test.id)}
     {@const failure = manualTestsStore.failure(test.id)}
     {@const log = manualTestsStore.log(test.id)}
-    <Card as="section" class="flex flex-col gap-3 p-4" aria-labelledby="manual-test-{test.id}">
+    {@const titleId = `${uid}-${test.id}`}
+    <Card as="section" class="flex flex-col gap-3 p-4" aria-labelledby={titleId}>
       <div class="flex flex-wrap items-center gap-2">
-        <h2 id="manual-test-{test.id}" class="m-0 text-base font-semibold text-foreground">{test.title}</h2>
+        <h2 id={titleId} class="m-0 text-base font-semibold text-foreground">{test.title}</h2>
         <Badge tone={test.changes_system ? "warning" : "neutral"}>
           {test.changes_system ? "Changes this PC" : "Read-only"}
         </Badge>
-        <code class="text-xs text-foreground-muted">{test.id}</code>
+        <InlineCode>{test.id}</InlineCode>
       </div>
       <p class="m-0 text-sm text-foreground-muted">{test.description}</p>
       <p class="m-0 text-sm text-foreground">
@@ -94,11 +89,11 @@
         {#if test.minutes !== null}
           <label class="flex items-center gap-2 text-sm text-foreground">
             Duration (minutes)
-            <input
+            <TextField
               type="number"
               min={MIN_MINUTES}
               max={MAX_MINUTES}
-              class="h-8 w-20 rounded-md border border-border bg-secondary px-2 text-sm text-foreground focus:border-accent focus:outline-none"
+              class="w-20"
               disabled={runningId !== null}
               value={minutesFor(test)}
               onchange={(e) => commitMinutes(test, e.currentTarget)}
@@ -109,21 +104,21 @@
           variant={test.changes_system ? "warning" : "primary"}
           size="sm"
           disabled={runningId !== null}
+          icon="mdi:play"
           aria-label="Run {test.title}"
           onclick={() => run(test)}
         >
-          <Icon icon="mdi:play" size="md" />
           Run
         </Button>
         {#if isRunning && test.minutes !== null}
           <Button
             variant="outline"
             size="sm"
+            icon="mdi:stop"
             loading={manualTestsStore.isCancelling}
             aria-label="Cancel {test.title}"
             onclick={() => manualTestsStore.cancel()}
           >
-            <Icon icon="mdi:stop" size="md" />
             {manualTestsStore.isCancelling ? "Stopping and restoring" : "Cancel"}
           </Button>
         {/if}
@@ -132,10 +127,10 @@
             variant="outline"
             size="sm"
             disabled={isRunning}
+            icon="mdi:content-copy"
             aria-label="Copy the report for {test.title}"
             onclick={() => copyReport(test.id)}
           >
-            <Icon icon="mdi:content-copy" size="md" />
             Copy report
           </Button>
         {/if}
@@ -175,7 +170,7 @@
           role="log"
           aria-live="polite"
           aria-label="Log for {test.title}"
-          {@attach stickToBottom(log.length)}>{log.join("\n")}</pre>
+          {@attach autoScroll}>{log.join("\n")}</pre>
       {/if}
     </Card>
   {/each}

@@ -1,9 +1,19 @@
+<script lang="ts" module>
+  import type { IconName, Tone } from "$lib/design";
+  import type { ButtonVariants } from "$lib/components/ui";
+  import type { ConfirmVariant as Variant } from "$lib/stores/confirm.svelte";
+
+  const VARIANT: Record<Variant, { icon: IconName; tone: Tone; button: ButtonVariants["variant"] }> = {
+    default: { icon: "mdi:help-circle", tone: "accent", button: "primary" },
+    warning: { icon: "mdi:alert", tone: "warning", button: "warning" },
+    danger: { icon: "mdi:alert-octagon", tone: "error", button: "danger" },
+  };
+</script>
+
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { type IconName, type Tone, TONE_TEXT } from "$lib/design";
+  import { TONE_TEXT } from "$lib/design";
   import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "$lib/components/ui";
-  import type { ButtonVariants } from "$lib/components/ui/variants";
-  import type { ConfirmVariant as Variant } from "$lib/stores/confirm.svelte";
 
   interface Props {
     open: boolean;
@@ -26,12 +36,6 @@
     onconfirm,
     oncancel,
   }: Props = $props();
-
-  const VARIANT: Record<Variant, { icon: IconName; tone: Tone; button: ButtonVariants["variant"] }> = {
-    default: { icon: "mdi:help-circle", tone: "accent", button: "primary" },
-    warning: { icon: "mdi:alert", tone: "warning", button: "warning" },
-    danger: { icon: "mdi:alert-octagon", tone: "error", button: "danger" },
-  };
 
   const config = $derived(VARIANT[variant]);
   const messageId = $props.id();

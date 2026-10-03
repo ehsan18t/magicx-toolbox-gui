@@ -23,7 +23,6 @@ import MdiCheckCircleOutline from "~icons/mdi/check-circle-outline";
 import MdiChevronDown from "~icons/mdi/chevron-down";
 import MdiChevronRight from "~icons/mdi/chevron-right";
 import MdiChevronUp from "~icons/mdi/chevron-up";
-import MdiCircle from "~icons/mdi/circle";
 import MdiCircleOutline from "~icons/mdi/circle-outline";
 import MdiClose from "~icons/mdi/close";
 import MdiCloseCircle from "~icons/mdi/close-circle";
@@ -127,7 +126,6 @@ export const iconRegistry = {
   "mdi:chevron-down": MdiChevronDown,
   "mdi:chevron-right": MdiChevronRight,
   "mdi:chevron-up": MdiChevronUp,
-  "mdi:circle": MdiCircle,
   "mdi:circle-outline": MdiCircleOutline,
   "mdi:close": MdiClose,
   "mdi:close-circle": MdiCloseCircle,

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
   import { Button, IconButton } from "$lib/components/ui";
+  import { TONE_TINT } from "$lib/design";
   import { pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import { plural } from "$lib/utils/format";
   import { expand } from "$lib/utils/motion";
@@ -25,24 +26,17 @@
 </script>
 
 {#if rebootCount > 0}
-  <div class="shrink-0 border-b border-border bg-info/8 px-4 py-2" transition:expand {@attach publishHeight}>
+  <div class="shrink-0 border-b px-4 py-2 {TONE_TINT.info}" transition:expand {@attach publishHeight}>
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       <Icon icon="mdi:restart" size="md" class="shrink-0 text-info" />
       <p class="m-0 min-w-0 flex-1 text-ui">
         <span class="font-semibold">Restart required.</span>
         <span class="text-foreground-muted">
-          {plural(rebootCount, "change")}
-          {rebootCount === 1 ? "takes" : "take"} effect after you restart Windows.
+          {plural(rebootCount, "change takes", "changes take")} effect after you restart Windows.
         </span>
       </p>
       <div class="flex shrink-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          class="px-2 text-foreground"
-          aria-expanded={showDetails}
-          onclick={() => (showDetails = !showDetails)}
-        >
+        <Button variant="ghost" size="sm" aria-expanded={showDetails} onclick={() => (showDetails = !showDetails)}>
           {showDetails ? "Hide list" : "Show which"}
         </Button>
         <IconButton

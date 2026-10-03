@@ -5,18 +5,28 @@
 
 <script lang="ts">
   import { ExternalLink, Icon, MarkdownText } from "$lib/components/shared";
-  import { Button, Callout, IconButton, Modal, SettingRow, Switch, textLink } from "$lib/components/ui";
+  import {
+    Badge,
+    Button,
+    Callout,
+    IconButton,
+    LinkButton,
+    Modal,
+    ModalTitle,
+    SettingRow,
+    Switch,
+    textLink,
+  } from "$lib/components/ui";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
+  import { versionLabel } from "$lib/utils/diagnostics";
   import { formatBytes } from "$lib/utils/format";
   import { formatDate } from "$lib/utils/time";
   import { exit } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
-
-  const titleId = $props.id();
 
   const isOpen = $derived(modalStore.current === "update");
   const appVersion = $derived(appInfoStore.version);
@@ -59,11 +69,11 @@
   });
 </script>
 
-<Modal open={isOpen} onclose={modalStore.close} size="md" labelledBy={titleId}>
+<Modal open={isOpen} onclose={modalStore.close} size="md">
   <div class="relative overflow-y-auto px-7 pt-6 pb-5">
     <IconButton icon="mdi:close" label="Close" class="absolute top-3 right-3" onclick={modalStore.close} />
 
-    <h2 id={titleId} class="m-0 font-display text-xl font-semibold">Updates</h2>
+    <ModalTitle size="xl">Updates</ModalTitle>
 
     <section class="mt-5" aria-live="polite">
       {#if updateInfo?.available}
@@ -72,9 +82,7 @@
         <div class="flex animate-fade-in flex-wrap items-baseline gap-x-2 gap-y-1">
           <p class="m-0 text-lg font-semibold">Version {updateInfo.latestVersion} is available</p>
           {#if updateInfo.prerelease}
-            <span class="rounded border border-warning/40 bg-warning/10 px-1.5 py-px text-xs font-medium text-warning">
-              Pre-release
-            </span>
+            <Badge tone="warning">Pre-release</Badge>
           {/if}
         </div>
         <p class="m-0 mt-1 text-ui text-foreground-muted">
@@ -91,8 +99,7 @@
 
         <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
           {#if updateInfo.downloadUrl && updateInfo.assetName}
-            <Button variant="primary" onclick={installUpdate} loading={isInstalling}>
-              {#if !isInstalling}<Icon icon="mdi:download" size="lg" />{/if}
+            <Button variant="primary" icon="mdi:download" loading={isInstalling} onclick={installUpdate}>
               {isInstalling ? "Downloading…" : "Install update"}
             </Button>
           {:else}
@@ -110,7 +117,7 @@
                 <Icon icon="mdi:check-circle" size="xl" class="text-success" />
                 You're up to date
               {:else}
-                Version {appVersion}
+                {versionLabel()}
               {/if}
             </p>
             <p class="m-0 mt-1 text-ui text-foreground-muted">
@@ -118,8 +125,7 @@
               {lastChecked}.
             </p>
           </div>
-          <Button variant="secondary" onclick={checkForUpdate} loading={isChecking}>
-            {#if !isChecking}<Icon icon="mdi:refresh" size="md" />{/if}
+          <Button variant="secondary" icon="mdi:refresh" loading={isChecking} onclick={checkForUpdate}>
             {isChecking ? "Checking…" : updateInfo ? "Check again" : "Check for updates"}
           </Button>
         </div>
@@ -128,13 +134,9 @@
       {#if error}
         <Callout tone="error" icon="mdi:alert-circle" class="mt-4 animate-fade-in text-ui">
           <span class="min-w-0 flex-1">{error}</span>
-          <button
-            type="button"
-            class="shrink-0 cursor-pointer text-xs text-foreground-muted underline hover:text-foreground"
-            onclick={() => updateStore.clearError()}
-          >
+          <LinkButton class="shrink-0 text-xs text-foreground-muted" onclick={() => updateStore.clearError()}>
             Dismiss
-          </button>
+          </LinkButton>
         </Callout>
       {/if}
     </section>
@@ -163,7 +165,7 @@
         />
       </SettingRow>
       <SettingRow title="Install updates automatically" description="Not available yet." density="flush">
-        <Switch checked={settingsStore.autoInstallUpdates} label="Install updates automatically" disabled />
+        <Switch checked={false} label="Install updates automatically" disabled />
       </SettingRow>
     </section>
   </div>

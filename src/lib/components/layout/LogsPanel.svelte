@@ -1,19 +1,18 @@
 <script lang="ts">
+  import { autoScroll } from "$lib/actions/autoScroll";
   import { Icon } from "$lib/components/shared";
   import { Badge, IconButton, SearchInput, Select, type SelectOption } from "$lib/components/ui";
-  import { appInfoStore } from "$lib/stores/appInfo.svelte";
+  import { type TextTone, TONE_TEXT } from "$lib/design";
   import { formatLogLine, gapLabel, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
-  import { systemStore } from "$lib/stores/system.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import type { LogLevel, LogSource } from "$lib/types";
   import { copyText } from "$lib/utils/clipboard";
+  import { diagnosticsHeader } from "$lib/utils/diagnostics";
   import { expand } from "$lib/utils/motion";
   import type { Attachment } from "svelte/attachments";
 
   type SourceFilter = "all" | LogSource;
 
-  // Scrolled within this of the bottom, the view keeps following new lines.
-  const FOLLOW_THRESHOLD_PX = 24;
   const RANK: Record<LogLevel, number> = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
   const LEVEL_FILTERS: SelectOption<LogLevel>[] = [
     { value: "trace", label: "All levels" },
@@ -27,17 +26,16 @@
     { value: "ui", label: "Interface" },
     { value: "helper", label: "Helper" },
   ];
-  const LEVEL_CLASS: Record<LogLevel, string> = {
-    error: "text-error",
-    warn: "text-warning",
-    info: "text-info",
-    debug: "text-foreground-muted",
-    trace: "text-foreground-subtle",
+  const LEVEL_TONE: Record<LogLevel, TextTone> = {
+    error: "error",
+    warn: "warning",
+    info: "info",
+    debug: "neutral",
+    trace: "subtle",
   };
   let minLevel = $state<LogLevel>("trace");
   let source = $state<SourceFilter>("all");
   let query = $state("");
-  let stuck = $state(true);
 
   const needle = $derived(query.trim().toLowerCase());
   const visible = $derived(
@@ -51,22 +49,12 @@
   );
   const hasLines = $derived(visible.some((row) => !isGap(row)));
 
-  // Re-runs whenever the visible rows change; reading `stuck` re-pins once the user scrolls back down.
-  function follow(rows: unknown[]): Attachment<HTMLElement> {
-    return (node) => {
-      if (stuck && rows.length > 0) node.scrollTop = node.scrollHeight;
-    };
-  }
-
   function close() {
     logsStore.closePanel();
     document.getElementById(LOGS_TOGGLE_ID)?.focus();
   }
 
-  const panel: Attachment<HTMLElement> = (node) => {
-    stuck = true;
-    node.focus({ preventScroll: true });
-  };
+  const focusOnOpen: Attachment<HTMLElement> = (node) => node.focus({ preventScroll: true });
 
   // Delegated like the controls inside, so it runs after them: a native listener here would run first.
   function handleKeydown(e: KeyboardEvent) {
@@ -77,12 +65,8 @@
   }
 
   async function copyVisible() {
-    const info = systemStore.info;
-    const header = `${appInfoStore.name} ${appInfoStore.version || "unknown"}, Windows build ${info?.windows.build_number ?? "unknown"}, elevated: ${
-      info ? (info.is_admin ? "yes" : "no") : "unknown"
-    }`;
     const lines = visible.map((row) => (isGap(row) ? `[${gapLabel(row)}]` : formatLogLine(row)));
-    const text = [header, ...lines].join("\n") + "\n";
+    const text = [diagnosticsHeader(), ...lines].join("\n") + "\n";
     if (await copyText(text, "Could not copy the lines")) toastStore.success("Visible lines copied");
   }
 </script>
@@ -93,7 +77,7 @@
     id={LOGS_PANEL_ID}
     aria-label="Logs"
     tabindex="-1"
-    {@attach panel}
+    {@attach focusOnOpen}
     onkeydown={handleKeydown}
     in:expand={{ speed: "slow" }}
     out:expand
@@ -134,7 +118,7 @@
           icon="mdi:export"
           size="sm"
           tooltip="Export diagnostics"
-          disabled={logsStore.isExporting}
+          loading={logsStore.isExporting}
           onclick={() => logsStore.exportDiagnostics()}
         />
         <IconButton
@@ -152,11 +136,7 @@
       aria-live="off"
       aria-label="Log lines"
       class="flex-1 overflow-y-auto py-1 font-mono text-xs"
-      onscroll={(e) => {
-        const el = e.currentTarget;
-        stuck = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD_PX;
-      }}
-      {@attach follow(visible)}
+      {@attach autoScroll}
     >
       {#if !hasLines}
         <div class="flex h-full items-center justify-center px-3 text-center font-sans text-sm text-foreground-muted">
@@ -169,9 +149,9 @@
           {#if isGap(row)}
             <div class="log-row px-3 py-0.5 text-center text-foreground-muted italic">{gapLabel(row)}</div>
           {:else}
-            <div class="log-row flex gap-2 px-3 py-0.5 hover:bg-foreground/5">
+            <div class="log-row flex gap-2 px-3 py-0.5 hover:bg-muted">
               <span class="shrink-0 text-foreground-muted">{row.time}</span>
-              <span class="w-10 shrink-0 font-semibold uppercase {LEVEL_CLASS[row.level]}">{row.level}</span>
+              <span class="w-10 shrink-0 font-semibold uppercase {TONE_TEXT[LEVEL_TONE[row.level]]}">{row.level}</span>
               <span class="w-11 shrink-0 text-foreground-muted">{row.source}</span>
               <span class="min-w-0 flex-1 wrap-break-word whitespace-pre-wrap text-foreground"
                 ><span class="text-foreground-muted">{row.module}:</span> {row.msg}</span
