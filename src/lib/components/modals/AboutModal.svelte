@@ -19,7 +19,7 @@
 
 <script lang="ts">
   import { ExternalLink, Icon } from "$lib/components/shared";
-  import { Button, IconButton, Modal, ModalTitle, textLink } from "$lib/components/ui";
+  import { Button, IconButton, iconButton, Modal, ModalTitle, textLink } from "$lib/components/ui";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { copyText } from "$lib/utils/clipboard";
@@ -97,7 +97,7 @@
         {#each AUTHOR_LINKS as link (link.href)}
           <ExternalLink
             href={link.href}
-            class="flex h-7 w-7 items-center justify-center rounded-md text-foreground-muted hover:bg-muted hover:text-foreground"
+            class={iconButton({ size: "sm" })}
             aria-label={link.label}
             tooltip={link.label}
           >

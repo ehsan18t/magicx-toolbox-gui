@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { Checkbox } from "$lib/components/ui";
-  import { DISABLED } from "$lib/components/ui/variants";
+  import { Checkbox, DISABLED } from "$lib/components/ui";
   import type { Snippet } from "svelte";
 
   interface Props {

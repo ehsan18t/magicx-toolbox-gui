@@ -10,6 +10,8 @@
 
   interface Props {
     title: string;
+    /** `outside`: the title sits above the card, as a page section heading. */
+    heading?: "inside" | "outside";
     /** Trailing header controls, e.g. a refresh button. */
     actions?: Snippet;
     inset?: keyof typeof INSET;
@@ -17,22 +19,29 @@
     children: Snippet;
   }
 
-  let { title, actions, inset = "sm", class: className, children }: Props = $props();
+  let { title, heading = "inside", actions, inset = "sm", class: className, children }: Props = $props();
 
   const titleId = $props.id();
 </script>
 
-<Card as="section" class={cn("overflow-hidden", className)} aria-labelledby={titleId}>
-  <div
-    class={[
-      "border-b border-border",
-      actions
-        ? `flex items-center justify-between gap-3 py-1 pr-1 ${INSET[inset].actions}`
-        : `py-2 ${INSET[inset].bare}`,
-    ]}
-  >
-    <h2 id={titleId} class="m-0 text-ui font-semibold">{title}</h2>
-    {@render actions?.()}
-  </div>
-  {@render children()}
-</Card>
+{#if heading === "outside"}
+  <section class={className} aria-labelledby={titleId}>
+    <h2 id={titleId} class="m-0 mb-2 text-sm font-semibold text-foreground">{title}</h2>
+    <Card>{@render children()}</Card>
+  </section>
+{:else}
+  <Card as="section" class={cn("overflow-hidden", className)} aria-labelledby={titleId}>
+    <div
+      class={[
+        "border-b border-border",
+        actions
+          ? `flex items-center justify-between gap-3 py-1 pr-1 ${INSET[inset].actions}`
+          : `py-2 ${INSET[inset].bare}`,
+      ]}
+    >
+      <h2 id={titleId} class="m-0 text-ui font-semibold">{title}</h2>
+      {@render actions?.()}
+    </div>
+    {@render children()}
+  </Card>
+{/if}

@@ -9,6 +9,9 @@ export const BUSY = "cursor-wait opacity-70";
 
 // `enabled:hover:`, not `hover:` plus a `disabled:hover:` reset: a disabled control never reacts.
 const GHOST = "bg-transparent text-foreground-muted enabled:hover:bg-muted enabled:hover:text-foreground";
+// `not-disabled:`, as `enabled:` never matches an <a>: link icon buttons share the look.
+const GHOST_LINKABLE =
+  "bg-transparent text-foreground-muted not-disabled:hover:bg-muted not-disabled:hover:text-foreground";
 
 export const button = tv({
   base: ["inline-flex items-center justify-center gap-1.5 rounded-md border-0 font-medium cursor-pointer", DISABLED],
@@ -29,6 +32,7 @@ export const button = tv({
     },
     /** Text colour on a neutral variant, e.g. a secondary Remove in error. */
     tone: {
+      foreground: "text-foreground",
       accent: "text-accent enabled:hover:text-accent",
       warning: "text-warning enabled:hover:text-warning",
       error: "text-error enabled:hover:text-error",
@@ -43,7 +47,7 @@ export const button = tv({
 export type ButtonVariants = VariantProps<typeof button>;
 
 export const iconButton = tv({
-  base: ["inline-flex shrink-0 cursor-pointer items-center justify-center border-0", GHOST, DISABLED],
+  base: ["inline-flex shrink-0 cursor-pointer items-center justify-center border-0", GHOST_LINKABLE, DISABLED],
   variants: {
     size: {
       xs: "h-6 w-6 rounded",
@@ -60,8 +64,8 @@ export const iconButton = tv({
     },
   },
   compoundVariants: [
-    { active: true, tone: "accent", class: "text-accent enabled:hover:text-accent" },
-    { active: true, tone: "warning", class: "text-warning enabled:hover:text-warning" },
+    { active: true, tone: "accent", class: "text-accent not-disabled:hover:text-accent" },
+    { active: true, tone: "warning", class: "text-warning not-disabled:hover:text-warning" },
   ],
   defaultVariants: {
     size: "md",

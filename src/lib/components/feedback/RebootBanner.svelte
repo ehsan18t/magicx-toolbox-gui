@@ -36,7 +36,14 @@
         </span>
       </p>
       <div class="flex shrink-0 items-center gap-1">
-        <Button variant="ghost" size="sm" aria-expanded={showDetails} onclick={() => (showDetails = !showDetails)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          tone="foreground"
+          class="px-2"
+          aria-expanded={showDetails}
+          onclick={() => (showDetails = !showDetails)}
+        >
           {showDetails ? "Hide list" : "Show which"}
         </Button>
         <IconButton
