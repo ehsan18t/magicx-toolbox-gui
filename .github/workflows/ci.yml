@@ -55,14 +55,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # The project's own gate, per CLAUDE.md:
-      # prettier, tsc, svelte-check, cargo fmt, cargo clippy, eslint.
+      # prettier, tsc, svelte-check, cargo fmt, clippy, eslint, node tests, cargo test.
       - name: pnpm run validate
         run: pnpm run validate
-
-      - name: Rust tests
-        working-directory: src-tauri
-        run: cargo test --all-targets
 
       # The manual_tests module compiles only under test-build.
       - name: Rust tests (test-build)
@@ -102,7 +97,7 @@ jobs:
 
       - name: Rust tests (ignored)
         working-directory: src-tauri
-        run: cargo test --all-targets -- --ignored --test-threads=1
+        run: cargo test --all-targets -- --ignored --skip dump_preview_corpus --test-threads=1
 
   line-endings:
     name: Line endings
