@@ -417,7 +417,6 @@ pub async fn install_update(
             crate::taskbar::progress(&host, percent);
         }
     };
-    let saver = app.clone();
     let exiter = app.clone();
     let work = tauri::async_runtime::spawn_blocking(move || {
         install_update_in(
@@ -430,7 +429,6 @@ pub async fn install_update(
                 size: asset_size,
             },
             report,
-            || crate::window_state::save(&saver),
             || exiter.exit(0),
         )
     });
@@ -449,7 +447,6 @@ fn install_update_in(
     paths: &UpdatePaths,
     download: Download,
     on_progress: impl FnMut(DownloadProgress),
-    before_launch: impl FnOnce(),
     exit: impl FnOnce(),
 ) -> Result<()> {
     log::info!("Starting update download: {:?}", download.asset_name);
@@ -491,12 +488,11 @@ fn install_update_in(
     }
 
     log::info!("Download verified, replacing the app");
-    before_launch();
     let dir = paths.exe.parent().unwrap_or(Path::new("."));
     replace_and_launch(paths, |exe| {
-        // Without it the new instance yields to this one's single-instance mutex.
+        // Without them the new instance yields to this one's single-instance mutex.
         Command::new(exe)
-            .arg(crate::services::single_instance::after_restart_arg())
+            .args(crate::services::single_instance::relaunch_args())
             .current_dir(dir)
             .spawn()
             .map(drop)
@@ -574,7 +570,7 @@ struct UpdatePaths {
     exe: PathBuf,
     /// The verified download, before it takes the exe's name.
     staged: PathBuf,
-    /// The replaced exe, deleted at the next start.
+    /// The replaced exe, deleted once the next start's interface has mounted.
     old: PathBuf,
 }
 
@@ -700,9 +696,24 @@ pub fn previous_version_hint() -> Option<String> {
     })
 }
 
-/// Deletes the exe an update replaced, and any interrupted download. Called once the window has
-/// shown, so a release that cannot start keeps the version to go back to.
-pub fn remove_update_leftovers() {
+/// For the interface's own startup error, which shows in a window the native report never covers.
+#[tauri::command]
+pub fn get_previous_version_hint() -> Result<Option<String>> {
+    log::info!("get_previous_version_hint");
+    Ok(previous_version_hint())
+}
+
+/// Only now, not on page load: WebView2 finishes a failed navigation too, and the page loads before
+/// the interface mounts. A release whose interface never mounts keeps the version to go back to.
+#[tauri::command]
+pub async fn frontend_ready() -> Result<()> {
+    log::info!("Interface mounted");
+    tauri::async_runtime::spawn_blocking(remove_update_leftovers).await?;
+    Ok(())
+}
+
+/// Deletes the exe an update replaced, and any interrupted download.
+fn remove_update_leftovers() {
     match std::env::current_exe() {
         Ok(exe) => remove_leftovers(&UpdatePaths::beside(exe)),
         Err(e) => log::warn!("could not look for files left by an update: {e}"),
@@ -1113,7 +1124,6 @@ mod tests {
             ),
             |_| panic!("no download may start"),
             || {},
-            || {},
         );
         assert!(result.is_err(), "got {result:?}");
     }
@@ -1153,7 +1163,6 @@ mod tests {
                 &paths,
                 download(url, name, digest),
                 |_| {},
-                || {},
                 || panic!("a rejected update never exits"),
             );
             assert!(matches!(result, Err(Error::Update(_))), "got {result:?}");
@@ -1175,7 +1184,6 @@ mod tests {
             &UpdatePaths::beside(PathBuf::from(PORTABLE_ASSET)),
             download("https://example.com/x.exe", "x.exe", None),
             |_| {},
-            || {},
             || {},
         );
         assert!(

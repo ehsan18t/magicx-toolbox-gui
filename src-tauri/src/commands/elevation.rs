@@ -17,11 +17,7 @@ pub async fn restart_as_admin(app: tauri::AppHandle) -> Result<()> {
     };
     // "runas" blocks until the UAC prompt is answered, so it runs on the blocking pool.
     tauri::async_runtime::spawn_blocking(move || {
-        let launch = || {
-            crate::window_state::save(&app);
-            launch_elevated(owner)
-        };
-        restart_as_admin_in(lifecycle::gate(), launch, || app.exit(0))
+        restart_as_admin_in(lifecycle::gate(), || launch_elevated(owner), || app.exit(0))
     })
     .await?
 }
@@ -55,12 +51,7 @@ fn launch_elevated(owner: isize) -> Result<()> {
     let wide = |s: &OsStr| -> Vec<u16> { s.encode_wide().chain(std::iter::once(0)).collect() };
     let exe = std::env::current_exe()
         .map_err(|e| Error::from_io("Could not find the app's executable", &e))?;
-    // The elevated instance may run under another account, whose own settings file would apply.
-    let [persist, detailed] = crate::logging::restart_args();
-    let params = format!(
-        "{} {persist} {detailed}",
-        crate::services::single_instance::after_restart_arg()
-    );
+    let params = crate::services::single_instance::relaunch_args().join(" ");
     let (verb, file, params) = (
         wide(OsStr::new("runas")),
         wide(exe.as_os_str()),

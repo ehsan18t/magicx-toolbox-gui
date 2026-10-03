@@ -16,3 +16,13 @@ export async function installUpdate(
   const channel = new Channel<DownloadProgress>(onProgress);
   await invoke("install_update", { downloadUrl, assetName, assetDigest, assetSize, onProgress: channel });
 }
+
+/** Once the interface has mounted: the backend then deletes the exe the last update replaced. */
+export async function frontendReady(): Promise<void> {
+  await invoke("frontend_ready");
+}
+
+/** How to go back to the version the last update replaced, while it is still there. */
+export async function getPreviousVersionHint(): Promise<string | null> {
+  return await invoke<string | null>("get_previous_version_hint");
+}

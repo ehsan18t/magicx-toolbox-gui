@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as systemApi from "$lib/api/system";
+  import * as updateApi from "$lib/api/update";
   import { ApplyingOverlay, LoadError, ToastContainer } from "$lib/components/feedback";
   import { LogsPanel, TitleBar } from "$lib/components/layout";
   import { AboutModal, ConfirmHost, ProfileImportModal, UpdateModal } from "$lib/components/modals";
@@ -64,6 +65,10 @@
       }
       if (!bootStore.error) updateStore.autoCheckIfDue();
     });
+    // Only a booted, rendered workspace proves this version works; until then `<exe>.old` stays for a rollback.
+    if (!bootStore.error && !workspaceFailed) {
+      updateApi.frontendReady().catch((error) => logError("Failed to report the interface ready", error));
+    }
   }
 
   onMount(() => {

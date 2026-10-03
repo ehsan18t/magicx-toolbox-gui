@@ -150,6 +150,8 @@ pub fn run() {
             // Update commands
             commands::update::check_for_update,
             commands::update::install_update,
+            commands::update::frontend_ready,
+            commands::update::get_previous_version_hint,
             commands::manual_tests::manual_tests_available,
             #[cfg(feature = "test-build")]
             commands::manual_tests::list_manual_tests,

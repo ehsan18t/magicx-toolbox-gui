@@ -1,4 +1,5 @@
 import { closeWindowOrHint } from "$lib/api/system";
+import { getPreviousVersionHint } from "$lib/api/update";
 import { errorMessage } from "$lib/utils/error";
 import { installErrorForwarding, logError } from "$lib/utils/logger";
 import { mount } from "svelte";
@@ -30,6 +31,15 @@ function showStartupError(error: unknown): void {
   panel.append(title, detail, hint, close);
   host.replaceChildren(panel);
   close.focus();
+
+  getPreviousVersionHint()
+    .then((text) => {
+      if (!text) return;
+      const previous = document.createElement("p");
+      previous.textContent = text;
+      hint.after(previous);
+    })
+    .catch((error) => logError("Failed to look for the previous version", error));
 }
 
 // Dev-only browser preview with fixture IPC: `?preview` (admin) or `?preview&user`. DEV-gated so builds drop it.
@@ -47,6 +57,7 @@ async function start(): Promise<void> {
   } catch (error) {
     logError("The interface failed to start", error);
     showStartupError(error);
+    return;
   }
 }
 

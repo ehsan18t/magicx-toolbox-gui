@@ -28,8 +28,14 @@ const DENIED_RETRY: Duration = Duration::from_millis(100);
 const WINDOW_CLASS: &str = "Tauri Window";
 const WINDOW_TITLE: &str = "MagicX Toolbox";
 
-/// For a relaunch of this exe: the new instance waits for this process to exit.
-pub fn after_restart_arg() -> String {
+/// Both relaunch paths: argv[1] makes the new instance wait for this one to exit, and the log
+/// overrides carry this session's settings to an elevation under another account.
+pub fn relaunch_args() -> [String; 3] {
+    let [persist, detailed] = crate::logging::restart_args();
+    [after_restart_arg(), persist, detailed]
+}
+
+fn after_restart_arg() -> String {
     format!("{AFTER_RESTART_ARG}{}", std::process::id())
 }
 
@@ -352,6 +358,25 @@ mod tests {
         ] {
             assert_eq!(classify(&args(plain)), Launch::Plain, "{plain:?}");
         }
+    }
+
+    #[test]
+    fn a_relaunch_names_the_predecessor_and_carries_both_log_settings() {
+        use crate::logging::settings::{with_overrides, Settings};
+        let relaunch = relaunch_args().map(OsString::from);
+        let mut argv = vec![OsString::from("app.exe")];
+        argv.extend(relaunch.iter().cloned());
+        assert_eq!(classify(&argv), Launch::AfterRestart(std::process::id()));
+        let base = Settings::default();
+        let flipped = Settings {
+            persist: !base.persist,
+            detailed: !base.detailed,
+        };
+        assert_eq!(
+            with_overrides(base, relaunch.clone()),
+            with_overrides(flipped, relaunch),
+            "an override is missing"
+        );
     }
 
     #[test]

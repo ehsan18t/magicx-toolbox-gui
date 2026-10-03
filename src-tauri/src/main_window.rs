@@ -28,11 +28,7 @@ pub fn on_page_load<R: Runtime>(webview: &Webview<R>, payload: &PageLoadPayload<
         return;
     }
     match webview.window().show() {
-        // Only now: a release that fails before its first show keeps the previous exe to go back to.
-        Ok(()) => {
-            log::info!("main window shown");
-            crate::commands::update::remove_update_leftovers();
-        }
+        Ok(()) => log::info!("main window shown"),
         Err(e) => {
             SHOWN.store(false, Ordering::SeqCst);
             log::error!("could not show the main window: {e}");
@@ -86,9 +82,10 @@ pub fn report_already_running() {
     );
 }
 
-/// A debug build reports on stderr instead.
+/// A debug build logs the text instead, which the pipeline echoes to stderr.
 fn message_box(text: &str) {
     if cfg!(debug_assertions) {
+        log::error!("{text}");
         return;
     }
     let (text, title) = (

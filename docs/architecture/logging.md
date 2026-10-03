@@ -76,7 +76,7 @@ A write that fails (disk full, folder gone, access denied) closes the file, reco
 - **Missing**: the defaults (saving on, Detailed off). The file is not created until the user changes a setting. A missing field takes its default, and a leading UTF-8 byte order mark (Notepad's "UTF-8 with BOM") is ignored.
 - **Unreadable or invalid**: this session runs memory-only, Settings shows the problem, and the file is left as it is until the user changes a setting. A save writes a temporary file beside it and renames it over the old one, so a failed save leaves the old file whole.
 - **Applied live.** Turning saving off closes the file (existing files are kept); turning it on opens a new session file and copies the buffer so far into it. Detailed changes the level at once. Settings shows the effective state the backend returns, not the state the switch was moved to.
-- **Restart as administrator** passes the effective values as `--log-persist=0|1` and `--log-detailed=0|1`, so an elevated instance running under another administrator account follows this user's choice for that session without writing it.
+- **A relaunch** (Restart as administrator, or starting an installed update) passes the effective values as `--log-persist=0|1` and `--log-detailed=0|1`, so the new instance keeps this session's settings, and an elevated instance running under another administrator account follows this user's choice for that session without writing it.
 
 ## The TrustedInstaller helper
 

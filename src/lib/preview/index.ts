@@ -281,6 +281,8 @@ function plugin(cmd: string, args: Args): unknown {
 
 const MOCKED = [
   "set_window_background",
+  "frontend_ready",
+  "get_previous_version_hint",
   "cancel_manual_test",
   "install_update",
   "reveal_last_export",
@@ -327,6 +329,8 @@ export function installPreview(admin: boolean): void {
       if (isMocked(cmd))
         switch (cmd) {
           case "set_window_background":
+          case "frontend_ready":
+          case "get_previous_version_hint":
           case "cancel_manual_test":
           case "install_update":
           case "reveal_last_export":

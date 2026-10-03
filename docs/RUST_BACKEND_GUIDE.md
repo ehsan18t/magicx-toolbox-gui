@@ -113,7 +113,6 @@ Handles one-time initialization when the app starts:
 
 ```rust
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    crate::commands::update::remove_update_leftovers();
     crate::main_window::track_busy(app.handle());
     let tweak_state = TweakEngineState::new()?;
     tweak_state.scan_startup_crash_residue();
@@ -129,6 +128,7 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 - A crash-residue scan that fails for a tweak is kept in memory and shown as Needs Attention until a retry, taken only while no apply holds that tweak, records it
 - `track_busy` names the in-flight change on the Windows shutdown screen while any tweak or app lock is held
 - Managed state (the tweak engine, app items) is created here
+- The files a self-update leaves (`<exe>.old`, `<exe>.new`) are not touched here: `frontend_ready` deletes them once the interface has booted without an error, so a release whose interface fails keeps the previous version
 
 ## 🚀 Working with Commands
 
