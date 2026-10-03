@@ -1,7 +1,7 @@
 import { exitApp } from "$lib/api/platform";
 import * as updateApi from "$lib/api/update";
 import { APP_CONFIG } from "$lib/config/app";
-import type { UpdateInfo } from "$lib/types";
+import type { DownloadProgress, UpdateInfo } from "$lib/types";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { HOUR_MS } from "$lib/utils/time";
@@ -18,6 +18,7 @@ const EXIT_AFTER_INSTALL_MS = 1000;
 
 let isChecking = $state(false);
 let isInstalling = $state(false);
+let downloadProgress = $state<DownloadProgress | null>(null);
 let updateInfo = $state<UpdateInfo | null>(null);
 let lastError = $state<string | null>(null);
 
@@ -68,8 +69,15 @@ async function installUpdate(): Promise<boolean> {
 
   isInstalling = true;
   lastError = null;
+  downloadProgress = null;
   try {
-    await updateApi.installUpdate(updateInfo.downloadUrl, updateInfo.assetName, updateInfo.assetDigest ?? null);
+    await updateApi.installUpdate(
+      updateInfo.downloadUrl,
+      updateInfo.assetName,
+      updateInfo.assetDigest ?? null,
+      updateInfo.assetSize ?? null,
+      (progress) => (downloadProgress = progress),
+    );
     return true;
   } catch (error) {
     logError("Update installation failed", error);
@@ -79,6 +87,7 @@ async function installUpdate(): Promise<boolean> {
     return false;
   } finally {
     isInstalling = false;
+    downloadProgress = null;
   }
 }
 
@@ -93,6 +102,10 @@ export const updateStore = {
 
   get updateInfo() {
     return updateInfo;
+  },
+
+  get downloadProgress() {
+    return downloadProgress;
   },
 
   get error() {

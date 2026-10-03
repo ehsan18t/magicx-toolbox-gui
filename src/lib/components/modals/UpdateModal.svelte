@@ -10,6 +10,7 @@
     Modal,
     ModalBody,
     ModalHeader,
+    ProgressBar,
     SettingRow,
     Switch,
     WIDE_DIALOG_INSET,
@@ -30,6 +31,8 @@
   const isInstalling = $derived(updateStore.isInstalling);
   const updateInfo = $derived(updateStore.updateInfo);
   const error = $derived(updateStore.error);
+  const download = $derived(updateStore.downloadProgress);
+  const downloadTotal = $derived(download?.total ?? 0);
 
   onMount(() => void appInfoStore.load());
 
@@ -103,6 +106,16 @@
             >
           {/if}
         </div>
+
+        {#if isInstalling}
+          <ProgressBar
+            class="mt-4 animate-fade-in"
+            value={download && downloadTotal > 0 ? download.downloaded : null}
+            max={downloadTotal}
+            label="Downloading the update"
+            showValue
+          />
+        {/if}
       {:else}
         <div class="flex animate-fade-in flex-wrap items-center justify-between gap-4">
           <div class="min-w-0">

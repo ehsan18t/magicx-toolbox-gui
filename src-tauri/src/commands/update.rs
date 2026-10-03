@@ -455,21 +455,86 @@ fn validate_asset_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadProgress {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+}
+
+impl DownloadProgress {
+    fn percent(&self) -> Option<u64> {
+        self.total
+            .filter(|&total| total > 0)
+            .map(|total| (u128::from(self.downloaded) * 100 / u128::from(total)).min(100) as u64)
+    }
+}
+
+const UNKNOWN_SIZE_STEP: u64 = 256 * 1024;
+
+/// Reports a download only when its whole percent changes (with no known size, each 256 KiB).
+struct ProgressMeter {
+    now: DownloadProgress,
+    last_step: Option<u64>,
+}
+
+impl ProgressMeter {
+    fn new(total: Option<u64>) -> Self {
+        Self {
+            now: DownloadProgress {
+                downloaded: 0,
+                total,
+            },
+            last_step: None,
+        }
+    }
+
+    fn advance(&mut self, read: u64) -> Option<DownloadProgress> {
+        self.now.downloaded = self.now.downloaded.saturating_add(read);
+        let step = self
+            .now
+            .percent()
+            .unwrap_or(self.now.downloaded / UNKNOWN_SIZE_STEP);
+        (self.last_step != Some(step)).then(|| {
+            self.last_step = Some(step);
+            self.now
+        })
+    }
+}
+
 #[tauri::command]
 pub async fn install_update(
+    app: tauri::AppHandle,
     download_url: String,
     asset_name: String,
     asset_digest: Option<String>,
+    asset_size: Option<u64>,
+    on_progress: tauri::ipc::Channel<DownloadProgress>,
 ) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || {
+    let host = app.clone();
+    let mut channel = Some(on_progress);
+    let report = move |progress: DownloadProgress| {
+        if let Some(Err(e)) = channel.as_ref().map(|c| c.send(progress)) {
+            log::warn!("update progress not delivered, no more will be sent: {e}");
+            channel = None;
+        }
+        if let Some(percent) = progress.percent() {
+            crate::taskbar::progress(&host, percent);
+        }
+    };
+    let saver = app.clone();
+    let work = tauri::async_runtime::spawn_blocking(move || {
         install_update_in(
             crate::tweaks::engine::lifecycle::gate(),
             download_url,
             asset_name,
             asset_digest,
+            asset_size,
+            report,
+            || crate::window_state::save(&saver),
         )
-    })
-    .await?
+    });
+    crate::taskbar::track(&app, async { work.await? }).await
 }
 
 fn install_update_in(
@@ -477,6 +542,9 @@ fn install_update_in(
     download_url: String,
     asset_name: String,
     asset_digest: Option<String>,
+    asset_size: Option<u64>,
+    mut on_progress: impl FnMut(DownloadProgress),
+    before_launch: impl FnOnce(),
 ) -> Result<()> {
     log::info!("Starting update download: {:?}", asset_name);
 
@@ -514,16 +582,33 @@ fn install_update_in(
             Error::Update(format!("Failed to download update: {}", e))
         })?;
 
-    let mut bytes = Vec::new();
+    let body = response.into_body();
+    let mut meter = ProgressMeter::new(body.content_length().or(asset_size));
     // `into_reader` is unbounded; `read_to_vec` would cap an installer at 10 MB.
-    response
-        .into_body()
-        .into_reader()
-        .read_to_end(&mut bytes)
-        .map_err(|e| {
-            log::error!("Failed to read download: {}", e);
-            Error::Update(format!("Failed to read downloaded data: {}", e))
-        })?;
+    let mut reader = body.into_reader();
+    let mut bytes = Vec::new();
+    let mut chunk = vec![0u8; 64 * 1024];
+    if let Some(progress) = meter.advance(0) {
+        on_progress(progress);
+    }
+    loop {
+        let read = match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => {
+                log::error!("Failed to read download: {}", e);
+                return Err(Error::Update(format!(
+                    "Failed to read downloaded data: {}",
+                    e
+                )));
+            }
+        };
+        bytes.extend_from_slice(&chunk[..read]);
+        if let Some(progress) = meter.advance(read as u64) {
+            on_progress(progress);
+        }
+    }
 
     verify_digest(&asset_digest, &bytes)?;
     let (download_path, held) = stage_installer(&std::env::temp_dir(), &bytes, &asset_name)?;
@@ -535,6 +620,7 @@ fn install_update_in(
         .and_then(|e| e.to_str())
         .unwrap_or("");
 
+    before_launch();
     let result = if extension.eq_ignore_ascii_case("msi") {
         crate::services::system32::SystemTool::Msiexec
             .command()
@@ -885,8 +971,15 @@ mod tests {
             (ok.as_str(), "x.zip", Some("sha256:00")),
             (ok.as_str(), "x.exe", None),
         ] {
-            let result =
-                install_update_in(&gate, url.into(), name.into(), digest.map(str::to_string));
+            let result = install_update_in(
+                &gate,
+                url.into(),
+                name.into(),
+                digest.map(str::to_string),
+                None,
+                |_| {},
+                || {},
+            );
             assert!(matches!(result, Err(Error::Update(_))), "got {result:?}");
         }
         drop(
@@ -905,10 +998,51 @@ mod tests {
             "https://example.com/x.exe".into(),
             "x.exe".into(),
             None,
+            None,
+            |_| {},
+            || {},
         );
         assert!(
             matches!(result, Err(Error::ApplyInFlight(_))),
             "got {result:?}"
+        );
+    }
+
+    #[test]
+    fn percent_is_known_only_with_a_size() {
+        let at = |downloaded, total| DownloadProgress { downloaded, total }.percent();
+        assert_eq!(at(50, Some(200)), Some(25));
+        assert_eq!(at(300, Some(200)), Some(100));
+        assert_eq!(at(199, Some(200)), Some(99), "floored, never rounded up");
+        assert_eq!(at(u64::MAX, Some(u64::MAX)), Some(100));
+        assert_eq!(at(10, Some(0)), None);
+        assert_eq!(at(10, None), None);
+    }
+
+    #[test]
+    fn the_meter_reports_each_whole_percent_once() {
+        let mut meter = ProgressMeter::new(Some(1000));
+        assert_eq!(
+            meter.advance(0),
+            Some(DownloadProgress {
+                downloaded: 0,
+                total: Some(1000)
+            })
+        );
+        assert_eq!(meter.advance(5), None);
+        assert_eq!(meter.advance(5).map(|p| p.downloaded), Some(10));
+        assert_eq!(meter.advance(990).and_then(|p| p.percent()), Some(100));
+        assert_eq!(meter.advance(0), None);
+    }
+
+    #[test]
+    fn without_a_size_the_meter_reports_each_step() {
+        let mut meter = ProgressMeter::new(None);
+        assert!(meter.advance(0).is_some());
+        assert_eq!(meter.advance(UNKNOWN_SIZE_STEP - 1), None);
+        assert_eq!(
+            meter.advance(1).map(|p| p.downloaded),
+            Some(UNKNOWN_SIZE_STEP)
         );
     }
 }

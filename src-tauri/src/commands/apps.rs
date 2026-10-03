@@ -222,22 +222,32 @@ fn find_app(app_id: &str) -> Result<&'static AppDef> {
         .ok_or_else(|| Error::NotFound(format!("app '{app_id}'")))
 }
 
-/// `remove_app`'s whole path for any definition, so the test build's manual test runs it too.
-pub(crate) async fn remove_gated(handle: AppHandle, app: &'static AppDef) -> Result<AppStatusView> {
-    gate(app, false).await?;
-    run_locked(&app.id, move || {
+/// Runs a removal or install under the app's lock, with the taskbar showing it.
+async fn change_tracked(
+    handle: AppHandle,
+    app: &'static AppDef,
+    change: fn(&AppDef, &dyn Machine) -> Result<AppPresence>,
+) -> Result<AppStatusView> {
+    let host = handle.clone();
+    let work = run_locked(&app.id, move || {
         let stamp = next_status_stamp();
         let state = handle.state::<AppsState>();
         let m = state.machine();
-        let presence = apps::remove(app, &m)?;
+        let presence = change(app, &m)?;
         Ok(AppStatusView {
             app_id: app.id.clone(),
             presence,
             install_route: route(app, &m),
             stamp,
         })
-    })
-    .await
+    });
+    crate::taskbar::track(&host, work).await
+}
+
+/// `remove_app`'s whole path for any definition, so the test build's manual test runs it too.
+pub(crate) async fn remove_gated(handle: AppHandle, app: &'static AppDef) -> Result<AppStatusView> {
+    gate(app, false).await?;
+    change_tracked(handle, app, apps::remove).await
 }
 
 /// `install_app`'s whole path, as [`remove_gated`].
@@ -246,19 +256,7 @@ pub(crate) async fn install_gated(
     app: &'static AppDef,
 ) -> Result<AppStatusView> {
     gate(app, true).await?;
-    run_locked(&app.id, move || {
-        let stamp = next_status_stamp();
-        let state = handle.state::<AppsState>();
-        let m = state.machine();
-        let presence = apps::install(app, &m)?;
-        Ok(AppStatusView {
-            app_id: app.id.clone(),
-            presence,
-            install_route: route(app, &m),
-            stamp,
-        })
-    })
-    .await
+    change_tracked(handle, app, apps::install).await
 }
 
 #[tauri::command]

@@ -10,7 +10,11 @@ pub async fn restart_as_admin(app: tauri::AppHandle) -> Result<()> {
     log::info!("Restart as admin requested");
     // ShellExecuteW "runas" blocks until the UAC prompt is answered, so it runs on the blocking pool.
     tauri::async_runtime::spawn_blocking(move || {
-        restart_as_admin_in(lifecycle::gate(), launch_elevated, || app.exit(0))
+        let launch = || {
+            crate::window_state::save(&app);
+            launch_elevated()
+        };
+        restart_as_admin_in(lifecycle::gate(), launch, || app.exit(0))
     })
     .await?
 }

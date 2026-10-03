@@ -143,7 +143,7 @@ Edit `src/app.css` to customize colors and design tokens.
 Update `src/lib/config/app.ts` for app metadata and settings.
 
 ### Window Settings
-Modify `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` for window behavior and permissions.
+Modify `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` for window behavior and permissions. The window's size, position and maximized state are remembered between launches (`src-tauri/src/window_state.rs`).
 
 ## License
 

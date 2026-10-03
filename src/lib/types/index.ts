@@ -505,6 +505,12 @@ export interface UpdateInfo {
   prerelease: boolean;
 }
 
+/** Bytes; `total` is null when the server sends no size. */
+export interface DownloadProgress {
+  downloaded: number;
+  total: number | null;
+}
+
 // Logs panel and diagnostics (commands/logging.rs).
 
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";

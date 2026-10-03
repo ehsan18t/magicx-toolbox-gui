@@ -236,6 +236,9 @@ Worked examples for every effect kind live in **[TWEAK_AUTHORING.md](./TWEAK_AUT
 - The TrustedInstaller child's log lines come back inside its response and are re-logged by the app under the `helper` source
 - See [architecture/logging.md](./architecture/logging.md) for the full reference
 
+### 10. Window state and taskbar (`window_state.rs`, `taskbar.rs`)
+- The main window's size, position and maximized state persist through `tauri-plugin-window-state` (restored before the hidden window is shown, saved on exit and before a relaunch); the update download reports its progress in the Update modal and on the taskbar button.
+
 ---
 
 ## Commands (Tauri IPC)
