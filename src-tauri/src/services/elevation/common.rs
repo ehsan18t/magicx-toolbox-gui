@@ -6,22 +6,14 @@
 
 use super::broker::AcquireReason;
 use crate::error::Error;
-use std::ptr;
 
-use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE, HANDLE, LUID};
-use windows_sys::Win32::Security::{
-    AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED,
-    TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
-};
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE, HANDLE};
 use windows_sys::Win32::System::Threading::{
-    GetCurrentProcess, GetExitCodeProcess, OpenProcessToken, TerminateProcess, WaitForSingleObject,
-    PROCESS_INFORMATION, STARTUPINFOW,
+    GetExitCodeProcess, TerminateProcess, WaitForSingleObject, PROCESS_INFORMATION, STARTUPINFOW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
 const STARTF_USESHOWWINDOW: u32 = 0x00000001;
-/// `AdjustTokenPrivileges` reports a privilege it could not grant through this, not a FALSE return.
-const ERROR_NOT_ALL_ASSIGNED: u32 = 1300;
 
 /// How long to wait on a spawned elevated child before treating it as hung.
 pub(super) const ELEVATED_PROCESS_TIMEOUT_MS: u32 = 30_000;
@@ -102,66 +94,13 @@ pub(crate) fn set_debug_privilege(enable: bool) -> Result<bool, Error> {
 }
 
 fn adjust_debug_privilege(enable: bool) -> Result<bool, SpawnError> {
-    // SAFETY: standard OpenProcessToken/LookupPrivilegeValueW/AdjustTokenPrivileges sequence; the
-    // token handle is closed on every path, `tp` is fully initialized and `previous` is sized.
-    unsafe {
-        let mut token: HANDLE = ptr::null_mut();
-        if OpenProcessToken(
-            GetCurrentProcess(),
-            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
-            &mut token,
-        ) == FALSE
-        {
-            return Err(spawn_failed(win_err("OpenProcessToken")));
-        }
-
-        let privilege_name = crate::services::wide("SeDebugPrivilege");
-        let mut luid: LUID = std::mem::zeroed();
-        if LookupPrivilegeValueW(ptr::null(), privilege_name.as_ptr(), &mut luid) == FALSE {
-            return Err(spawn_failed(close_then(
-                token,
-                win_err("LookupPrivilegeValue"),
-            )));
-        }
-
-        let mut tp: TOKEN_PRIVILEGES = std::mem::zeroed();
-        tp.PrivilegeCount = 1;
-        tp.Privileges[0] = LUID_AND_ATTRIBUTES {
-            Luid: luid,
-            Attributes: if enable { SE_PRIVILEGE_ENABLED } else { 0 },
-        };
-
-        let mut previous: TOKEN_PRIVILEGES = std::mem::zeroed();
-        let mut previous_len = 0u32;
-        if AdjustTokenPrivileges(
-            token,
-            FALSE,
-            &tp,
-            std::mem::size_of::<TOKEN_PRIVILEGES>() as u32,
-            &mut previous,
-            &mut previous_len,
-        ) == FALSE
-        {
-            return Err(spawn_failed(close_then(
-                token,
-                win_err("AdjustTokenPrivileges"),
-            )));
-        }
-
-        // AdjustTokenPrivileges succeeds even when it granted nothing; only the last-error says so.
-        let partial = GetLastError() == ERROR_NOT_ALL_ASSIGNED;
-        CloseHandle(token);
-        if enable && partial {
-            return Err(SpawnError::NoChild(
-                AcquireReason::DebugPrivilegeStripped,
-                Error::WindowsApi("SeDebugPrivilege not available, admin rights required".into()),
-            ));
-        }
-
-        log::trace!("SeDebugPrivilege enabled = {enable}");
-        // PreviousState lists only the privileges whose state the call actually changed.
-        Ok(previous.PrivilegeCount > 0)
-    }
+    crate::services::privilege::adjust("SeDebugPrivilege", enable).map_err(|e| match e {
+        Error::Win32 {
+            code: crate::error::win32::PRIVILEGE_NOT_HELD,
+            ..
+        } => SpawnError::NoChild(AcquireReason::DebugPrivilegeStripped, e),
+        e => spawn_failed(e),
+    })
 }
 
 pub(super) fn spawn_failed(e: Error) -> SpawnError {
@@ -169,19 +108,10 @@ pub(super) fn spawn_failed(e: Error) -> SpawnError {
 }
 
 /// Wrap the current thread's last Win32 error. Call this BEFORE any `CloseHandle`.
+#[cfg(feature = "test-build")]
 pub(super) fn win_err(what: &str) -> Error {
     // SAFETY: GetLastError only reads thread-local state.
     Error::WindowsApi(format!("{what} failed: {}", unsafe { GetLastError() }))
-}
-
-/// Close `handle` and return `err` unchanged, so the caller cannot accidentally re-read the
-/// last-error after the close has already overwritten it.
-///
-/// # Safety
-/// `handle` must be a valid, owned handle that is not used again.
-unsafe fn close_then(handle: HANDLE, err: Error) -> Error {
-    CloseHandle(handle);
-    err
 }
 
 /// Terminate the child after `failure`, saying whether it may still run. `TerminateProcess` only

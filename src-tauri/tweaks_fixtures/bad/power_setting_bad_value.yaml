@@ -1,0 +1,25 @@
+category:
+  id: power_setting_bad_value
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Power values missing an index or out of range."
+
+tweaks:
+  - id: t
+    name: "t"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: p
+        power_setting: { subgroup: '238c9fa8-0aad-41ed-83f4-97be242c8f20', setting: 'bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d', label: "Allow wake timers" }
+    options:
+      - label: "Missing dc"
+        values: { p: { ac: 0 } }
+      - label: "Negative"
+        values: { p: { ac: -1, dc: 0 } }
+      - label: "Too large"
+        values: { p: { ac: 0, dc: 4294967296 } }
+      - label: "Keyword"
+        values: { p: disabled }

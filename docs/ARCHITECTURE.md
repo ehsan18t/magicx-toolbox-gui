@@ -106,13 +106,13 @@ Lists that change on every keystroke or status rescan (tweak rows, search result
 > The tweak engine was rebuilt around a single typed representation. This section summarizes it; [architecture/tweak/](./architecture/tweak/README.md) is the full architecture reference and [TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md) is the authoring guide.
 
 #### 1. Effect-centric tweaks
-- **One managed surface**: a tweak declares its `effects:` (registry value/key, service, task, hosts, firewall, shared, action) once; each **option** is a flat value-map over that surface.
+- **One managed surface**: a tweak declares its `effects:` (registry value/key, service, task, hosts, firewall, power setting, audit flag, shared, action) once; each **option** is a flat value-map over that surface.
 - **Computed statuses**: "System Default" is computed when the live surface matches no option; 1 option renders as a System default | option switch, 2 as a segmented switch, 3 or more as a dropdown. **Unknown** (unreadable) and per-option **unavailable** are also computed, never authored.
 - **Windows scoping**: `windows: { products, build, revision }` at tweak/effect/option-value level.
 
 #### 2. Typed effects (one representation)
 - Apply, capture, detect, and revert all consume the *same* typed `Value`, so they cannot drift.
-- Each `EffectKind` module co-locates read/apply/revert/detect and wraps the reused low-level primitives (registry `RegSetValueExW`, service SCM, scheduler COM, hosts, firewall).
+- Each `EffectKind` module co-locates read/apply/revert/detect and wraps the reused low-level primitives (registry `RegSetValueExW`, service SCM, scheduler COM, hosts, firewall, powrprof power settings, the advapi32 audit policy API).
 - Reversibility and detectability are **typed**: Settings always; Actions iff they carry `undo`/`probe`.
 
 #### 3. Snapshot history + WAL

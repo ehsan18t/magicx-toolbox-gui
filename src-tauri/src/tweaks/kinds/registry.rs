@@ -31,9 +31,7 @@ impl EffectKind for RegistryKind {
         match s {
             Setting::Registry(addr) => read_value(addr),
             Setting::RegistryKey(addr) => read_key(addr),
-            Setting::Service(_) | Setting::Task(_) | Setting::Hosts(_) | Setting::Firewall(_) => {
-                Err(Error::Invalid("RegistryKind cannot read this Setting"))
-            }
+            _ => Err(Error::Invalid("RegistryKind cannot read this Setting")),
         }
     }
 
@@ -42,9 +40,7 @@ impl EffectKind for RegistryKind {
         match s {
             Setting::Registry(addr) => drive_value(addr, target),
             Setting::RegistryKey(addr) => drive_key(addr, target),
-            Setting::Service(_) | Setting::Task(_) | Setting::Hosts(_) | Setting::Firewall(_) => {
-                Err(Error::Invalid("RegistryKind cannot drive this Setting"))
-            }
+            _ => Err(Error::Invalid("RegistryKind cannot drive this Setting")),
         }
     }
 }
@@ -303,9 +299,7 @@ pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<
                 )),
             }
         }
-        Setting::Service(_) | Setting::Task(_) | Setting::Hosts(_) | Setting::Firewall(_) => {
-            Err(Error::Invalid("RegistryKind cannot drive this Setting"))
-        }
+        _ => Err(Error::Invalid("RegistryKind cannot drive this Setting")),
     }
 }
 

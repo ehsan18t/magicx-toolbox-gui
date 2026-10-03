@@ -1,0 +1,38 @@
+category:
+  id: power_and_audit
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Both typed kinds, valid."
+
+tweaks:
+  - id: wake_timers
+    name: "wake_timers"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: user
+    reversible: true
+    effects:
+      - id: wake
+        power_setting: { subgroup: '238c9fa8-0aad-41ed-83f4-97be242c8f20', setting: 'bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d', label: "Allow wake timers" }
+    options:
+      - label: "Off"
+        values: { wake: { ac: 0, dc: 0 } }
+      - label: "On"
+        values: { wake: { value: { ac: 1, dc: 1 }, windows: { build: ">=10240" } } }
+
+  - id: logon_audit
+    name: "logon_audit"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: logon_success
+        audit_policy: { subcategory: '{0CCE9215-69AE-11D9-BED3-505054503030}', event: success, label: "Logon" }
+      - id: logon_failure
+        audit_policy: { subcategory: '{0CCE9215-69AE-11D9-BED3-505054503030}', event: failure, label: "Logon" }
+    options:
+      - label: "Both"
+        values: { logon_success: enabled, logon_failure: enabled }
+      - label: "Success only"
+        values: { logon_success: enabled, logon_failure: disabled }

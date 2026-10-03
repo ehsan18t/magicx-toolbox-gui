@@ -10,6 +10,8 @@ const option = (label: string, parts: Partial<TweakEffectOption> = {}): TweakEff
   scheduler_changes: [],
   hosts_changes: [],
   firewall_changes: [],
+  power_changes: [],
+  audit_changes: [],
   commands: [],
   ...parts,
 });
@@ -115,6 +117,40 @@ test("an untouched setting leaves the option's cell null, and rows sort by kind"
   assert.deepEqual(task.cells[0], { text: "Disabled" });
   assert.deepEqual(hosts.cells[0], { text: "Mapped to 0.0.0.0" });
   assert.deepEqual(firewall.cells, [{ text: "Block outbound" }, { text: "Removed", removal: true }]);
+});
+
+test("power and audit rows sort last, one per setting or flag, named as the engine names them", () => {
+  const wake = { name: "Allow wake timers", subgroup: "238c9fa8", setting: "bd3b718a" };
+  const logon = (event: "success" | "failure", audited: boolean) => ({
+    name: `Logon (${event})`,
+    subcategory: "0cce9215",
+    event,
+    audited,
+  });
+  const rows = buildMatrix(
+    [
+      option("Off", {
+        power_changes: [{ ...wake, ac: 0, dc: 0 }],
+        audit_changes: [logon("success", true), logon("failure", true)],
+      }),
+      option("On", { power_changes: [{ ...wake, ac: 1, dc: 0 }], audit_changes: [logon("success", false)] }),
+    ],
+    option("now", { power_changes: [{ ...wake, ac: 2, dc: 0 }], registry_changes: [reg({})] }),
+  );
+  assert.deepEqual(
+    rows.map((r) => [r.kind, r.name]),
+    [
+      ["registry", "Flag"],
+      ["power", "Allow wake timers"],
+      ["audit", "Logon (success)"],
+      ["audit", "Logon (failure)"],
+    ],
+  );
+  const [, power, success, failure] = rows;
+  assert.deepEqual(power.cells, [{ text: "Plugged in 0, on battery 0" }, { text: "Plugged in 1, on battery 0" }]);
+  assert.deepEqual(power.now, { text: "Plugged in 2, on battery 0" });
+  assert.deepEqual(success.cells, [{ text: "Audited" }, { text: "Not audited" }]);
+  assert.deepEqual(failure.cells, [{ text: "Audited" }, null]);
 });
 
 test("the observed state fills the now column and can add a row", () => {

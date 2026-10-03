@@ -19,7 +19,7 @@ fn is_hkcu(s: &Setting) -> bool {
     match s {
         Setting::Registry(addr) => addr.hive == Hive::Hkcu,
         Setting::RegistryKey(addr) => addr.hive == Hive::Hkcu,
-        Setting::Service(_) | Setting::Task(_) | Setting::Hosts(_) | Setting::Firewall(_) => false,
+        _ => false,
     }
 }
 

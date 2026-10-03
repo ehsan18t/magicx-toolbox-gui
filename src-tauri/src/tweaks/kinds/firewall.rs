@@ -27,11 +27,7 @@ impl EffectKind for FirewallKind {
         // Reads never escalate (spec invariant 24) -- `cx` is unused here on purpose.
         match s {
             Setting::Firewall(addr) => read_firewall(addr),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Service(_)
-            | Setting::Task(_)
-            | Setting::Hosts(_) => Err(Error::Invalid("FirewallKind cannot read this Setting")),
+            _ => Err(Error::Invalid("FirewallKind cannot read this Setting")),
         }
     }
 
@@ -39,11 +35,7 @@ impl EffectKind for FirewallKind {
         guard_level(cx)?;
         match s {
             Setting::Firewall(addr) => drive_firewall(addr, target),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Service(_)
-            | Setting::Task(_)
-            | Setting::Hosts(_) => Err(Error::Invalid("FirewallKind cannot drive this Setting")),
+            _ => Err(Error::Invalid("FirewallKind cannot drive this Setting")),
         }
     }
 }

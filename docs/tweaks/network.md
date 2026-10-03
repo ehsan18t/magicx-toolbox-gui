@@ -1,6 +1,6 @@
 # Network & Power tweaks
 
-This category covers network hardening (encrypted DNS, the three broadcast name-resolution protocols LLMNR, NetBIOS over TCP/IP and mDNS, WPAD, IPv6 tunnels, Internet Connection Sharing, firewall logging) and power and sleep behaviour (NIC and USB power saving, hibernation, wake timers, Modern Standby). Every tweak here is machine-wide and needs administrator rights: most write HKLM values (policy or service keys), and the rest run PowerShell or `powercfg` actions that record the prior state before changing it, so a revert restores what was there. The primary platform is Windows 11 24H2 (build 26100) and newer; Windows 10 IoT Enterprise LTSC 2021 (build 19044) is a secondary target, and the two DNS-over-HTTPS tweaks are gated to Windows 11 only. The Windows Update controls researched alongside these tweaks in July 2026 are on their own page, [Windows Update](windows_update.md).
+This category covers network hardening (encrypted DNS, the three broadcast name-resolution protocols LLMNR, NetBIOS over TCP/IP and mDNS, WPAD, IPv6 tunnels, Internet Connection Sharing, firewall logging) and power and sleep behaviour (NIC and USB power saving, hibernation, wake timers, Modern Standby). Every tweak here is machine-wide and needs administrator rights: most write HKLM values (policy or service keys), USB selective suspend and wake timers are typed power plan settings the snapshot captures, and the rest run PowerShell or `powercfg` actions that record the prior state before changing it, so a revert restores what was there. The primary platform is Windows 11 24H2 (build 26100) and newer; Windows 10 IoT Enterprise LTSC 2021 (build 19044) is a secondary target, and the two DNS-over-HTTPS tweaks are gated to Windows 11 only. The Windows Update controls researched alongside these tweaks in July 2026 are on their own page, [Windows Update](windows_update.md).
 
 ## Index
 
@@ -765,54 +765,49 @@ Good on a desktop or a space-constrained SSD where you never hibernate. On a lap
 
 | Effect id | Kind | Target |
 |---|---|---|
-| `usb_suspend_off` | action (PowerShell, with `apply`, `undo` and `probe`) | power-plan setting "USB selective suspend setting" (subgroup `2a737441-1930-4402-8d77-b2bebba308a3` "USB settings", setting `48e6b7a6-50f5-4782-a5d4-53bb8f07e226`) on the active scheme, AC and DC indices; records the prior state under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend` |
+| `usb_selective_suspend` | power_setting | power-plan setting "USB selective suspend setting" (subgroup `2a737441-1930-4402-8d77-b2bebba308a3` "USB settings", setting `48e6b7a6-50f5-4782-a5d4-53bb8f07e226`) on the active scheme, AC and DC indexes |
+| `usb_suspend_off` | action (PowerShell, `undo` only; no option runs it) | reverses a snapshot taken while this tweak was a script: writes back the indexes that script recorded under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\UsbSelectiveSuspend` to every plan it changed, re-activating only the active plan, then deletes that key; `apply` exits 1 and never runs |
 
-| Option | `usb_suspend_off` |
+| Option | `usb_selective_suspend` |
 |---|---|
-| Disabled | run (apply) |
+| Disabled | AC 0, DC 0 |
 
-The setting's indices are 0 "Disabled" and 1 "Enabled". What the action does, precisely:
+The setting's indexes are 0 "Disabled" and 1 "Enabled". The effect reads both indexes of the active scheme natively (`PowerReadACValueIndex`, `PowerReadDCValueIndex`), with no script, so detection costs no process spawn and does not depend on the display language. Apply records both indexes and the plan's GUID in the tweak's snapshot, writes 0 to both (`PowerWriteACValueIndex`, `PowerWriteDCValueIndex`), activates the scheme again so the change takes effect, and verifies by reading both back.
 
-- **apply**: reads the active scheme GUID (`powercfg /GETACTIVESCHEME`) and fails if none is found; queries the current AC and DC indices for the setting on that scheme and fails if it cannot read both; records both indices in a subkey of the snapshot key named after the scheme GUID, unless that plan already has a record (a record is never overwritten, so re-applying after switching plans keeps the first plan's original values); sets AC and DC to 0 with `/SETACVALUEINDEX` and `/SETDCVALUEINDEX`; re-activates the scheme with `/SETACTIVE`. Any `powercfg` step that returns non-zero fails the apply.
-- **undo**: for every recorded plan that still exists and has a complete record, writes the recorded AC and DC indices back to that plan (not whichever plan is active now), and re-activates it only if it is the active plan, so the plan you use is never switched. An incomplete record means the apply stopped before changing that plan, and a plan deleted since has nothing to restore; both are skipped. Then deletes the snapshot key.
-- **probe**: "applied" only if both the AC and the DC index of the currently active scheme read 0.
-
-The indices are read as the last two hexadecimal numbers in the `powercfg /QUERY` output (AC, then DC), never by the text labels beside them, which Windows translates.
-
-System Default: shown whenever the active plan does not have both indices at 0: on an untouched machine, and after switching to a different power plan. Selecting it restores the snapshot. The tweak is detected from the active plan alone, so a plan that already has both indices at 0 shows "Disabled" for every Windows account. Stock Windows: Balanced has selective suspend enabled (index 1) on both AC and DC (measured on 26100).
+System Default: shown whenever the active plan does not have both indexes at 0: on an untouched machine, and after switching to a different power plan. Selecting it restores the snapshot. The tweak is detected from the active plan alone, so a plan that already has both indexes at 0 shows "Disabled" for every Windows account. Stock Windows: Balanced has selective suspend enabled (index 1) on both AC and DC (measured on 26100).
 
 #### How it works
 
 USB selective suspend lets the USB hub driver suspend an individual idle port so the device on it draws less power, without suspending the whole bus. The power plan decides whether the hub driver may do this. Some devices (USB audio interfaces and DACs, wireless receivers, some hubs) resume badly: audio glitches, a stall before the device responds, or a disconnect. Setting the plan value to Disabled keeps ports powered.
 
-Power-plan values are per scheme and per power source. The action writes only the scheme that is active at apply time, and keeps one record per scheme GUID, so the undo writes back to every scheme it changed even if you have switched plans since. `/SETACTIVE` applies the change without a reboot.
+Power-plan values are per scheme and per power source. The tweak writes only the scheme that is active at apply time, and activating that scheme again applies the change without a reboot.
 
 #### Benefits
 - Fixes USB audio dropouts and glitches after idle.
 - Wireless receivers and dongles stay awake and responsive.
 - Devices behind a hub respond immediately.
-- The revert restores the exact prior AC and DC indices on the exact scheme that was changed.
+- Restore writes back the exact AC and DC indexes the snapshot recorded, to the plan they were read from.
 
 #### Drawbacks
 - Higher idle power, a small but real battery cost on laptops.
-- Only the plan active at apply time is changed: switching to another plan (including enabling Ultimate Performance) brings selective suspend back, and the tweak then shows System Default. Applying again covers the new plan too, and a revert restores both.
+- Only the plan active at apply time is changed: switching to another plan (including enabling Ultimate Performance) brings selective suspend back, and the tweak then shows System Default. Applying again covers the new plan too.
 - No benefit if your USB devices behave.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, in any display language. Requires administrator.
-- **Takes effect**: immediately; the scheme is re-activated on apply.
-- **Reverting**: turning the switch off (System Default) runs the undo, restoring the recorded AC and DC indices on every plan the tweak changed, without changing which plan is active.
+- **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, in any display language. Requires administrator (the setting itself is writable as a standard user; the snapshot path below needs administrator).
+- **Takes effect**: immediately; the scheme is activated again on apply.
+- **Reverting**: selecting System Default runs Restore, which writes the AC and DC indexes recorded before you applied back to the plan they were read from, activating it again only if it is still the active plan, so your plan is never switched. If that plan has been deleted since, there is nothing to restore. A snapshot taken while this tweak was a script restores through that script's undo (`usb_suspend_off` above), which writes every plan it recorded back without changing which plan is active.
 
 #### Interactions
-- [performance] `ultimate_performance_power_plan` changes which scheme is active; after it switches plans, this tweak's change stays on the old plan and the probe reads the new one.
-- [Disable wake timers](#disable-wake-timers) uses the same scheme-pinning pattern on a different setting; independent.
+- [performance] `ultimate_performance_power_plan` changes which scheme is active; after it switches plans, this tweak's change stays on the old plan and detection reads the new one.
+- [Disable wake timers](#disable-wake-timers) uses the same kind on a different setting; independent.
 - [Disable NIC power management](#disable-nic-power-management) is a different mechanism for network adapters, not USB ports.
 
 #### Validation
-- **Verdict**: VERIFIED-WITH-CORRECTION. Both GUIDs and the index meanings are correct; the corrections concerned the revert and detection: restore the recorded indices rather than a fixed 1, pin the scheme so a plan switch cannot misdirect the undo, and check both AC and DC in the probe. The shipped action does all three, reads the indices without depending on the display language, and never switches the active plan on revert.
-- **Confidence**: Microsoft-documented (Microsoft's USB selective suspend and `powercfg` references), plus live `powercfg /QUERY` output on 26100 for the names, indices and stock values.
-- **Reasoning**: the adversarial pass accepted the mechanism and attacked only revert fidelity, scheme drift and a one-rail probe. The probe-fail-open audit lists this probe as failing safe (it reports "applied" only on an explicit match of both rails).
-- **Tested**: Build validation (schema, ownership and conflict checks). Under Windows PowerShell 5.1 on build 26100: apply, probe, undo and probe again restore the original AC and DC indices exactly; and applying on one plan, switching to a second plan, applying again and then undoing restored both plans' original indices while leaving the second plan active.
+- **Verdict**: VERIFIED-WITH-CORRECTION. Both GUIDs and the index meanings are correct; the corrections concerned the revert and detection: restore the recorded indexes rather than a fixed 1, pin the scheme so a plan switch cannot misdirect the undo, and check both AC and DC. The shipped tweak does all three: the snapshot records the plan with the indexes, Restore writes and verifies that plan without switching the active one, and detection reads both indexes natively.
+- **Confidence**: Microsoft-documented (Microsoft's USB selective suspend and power setting references), plus live `powercfg /QUERY` output on 26100 for the names, indexes and stock values.
+- **Reasoning**: the adversarial pass accepted the mechanism and attacked only revert fidelity, scheme drift and a one-rail check. Detection now compares both indexes from a native read, and an unreadable setting shows Unknown rather than a guess.
+- **Tested**: Build validation (schema, ownership and conflict checks). Unit tests drive the power setting kind through a fake power API (capture, drive, verify, restore, a plan switch before Restore, a deleted plan), and an engine test restores a capture to its own plan while another plan is active. A live read of the active scheme on build 26100 returns both indexes. Apply and Restore on a real machine are pending a manual check.
 
 #### Recommendation
 Apply it if you actually experience USB dropouts, audio glitches or slow wake-ups. If your USB devices behave, especially on a laptop, leave selective suspend on and keep the power saving.
@@ -832,21 +827,16 @@ Apply it if you actually experience USB dropouts, audio glitches or slow wake-up
 
 | Effect id | Kind | Target |
 |---|---|---|
-| `wake_timers_off` | action (PowerShell, with `apply`, `undo` and `probe`) | power-plan setting "Allow wake timers" / "Automatically wake for tasks" (`SUB_SLEEP` = `238c9fa8-0aad-41ed-83f4-97be242c8f20`, `RTCWAKE` = `bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d`) on the active scheme, AC and DC indices; records the prior state under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers` |
+| `wake_timers` | power_setting | power-plan setting "Allow wake timers" / "Automatically wake for tasks" (`SUB_SLEEP` = `238c9fa8-0aad-41ed-83f4-97be242c8f20`, `RTCWAKE` = `bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d`) on the active scheme, AC and DC indexes |
+| `wake_timers_off` | action (PowerShell, `undo` only; no option runs it) | reverses a snapshot taken while this tweak was a script: writes back the indexes that script recorded under `HKLM\SOFTWARE\MagicXToolbox\ActionSnapshots\WakeTimers` to every plan it changed, re-activating only the active plan, then deletes that key; `apply` exits 1 and never runs |
 
-| Option | `wake_timers_off` |
+| Option | `wake_timers` |
 |---|---|
-| Disabled | run (apply) |
+| Disabled | AC 0, DC 0 |
 
-The setting has three indices: 0 "Disable", 1 "Enable", 2 "Important Wake Timers Only". What the action does, precisely:
+The setting has three indexes: 0 "Disable", 1 "Enable", 2 "Important Wake Timers Only". The effect reads both indexes of the active scheme natively, with no script; apply records both and the plan's GUID in the tweak's snapshot, writes 0 to both, activates the scheme again and verifies by reading them back.
 
-- **apply**: reads the active scheme GUID and fails if none is found; queries the current AC and DC indices and fails if it cannot read both; records both indices in a subkey named after the scheme GUID unless that plan already has a record (records are never overwritten); sets AC and DC to 0; re-activates the scheme. Any `powercfg` step that returns non-zero fails the apply.
-- **undo**: for every recorded plan that still exists and has a complete record, writes the recorded indices back and re-activates that plan only if it is the active one. Incomplete records (the apply stopped before changing that plan) and deleted plans are skipped. Then deletes the snapshot key.
-- **probe**: "applied" only if both the AC and the DC index of the currently active scheme read 0.
-
-As with USB selective suspend, the indices are read as the last two hexadecimal numbers of the `powercfg /QUERY` output, never by the translated labels.
-
-System Default: shown whenever the active plan does not have both indices at 0: on an untouched machine, and after switching plans. Selecting it restores the snapshot. A plan that already has both indices at 0 shows "Disabled" for every Windows account. Stock Windows 11 Balanced (measured on 26100): AC = 2 "Important Wake Timers Only", DC = 0 "Disable".
+System Default: shown whenever the active plan does not have both indexes at 0: on an untouched machine, and after switching plans. Selecting it restores the snapshot. A plan that already has both indexes at 0 shows "Disabled" for every Windows account. Stock Windows 11 Balanced (measured on 26100): AC = 2 "Important Wake Timers Only", DC = 0 "Disable".
 
 #### How it works
 
@@ -854,37 +844,37 @@ Microsoft describes the setting as: "Specifies whether the system uses the syste
 
 On stock Windows 11 the battery (DC) value is already "Disable", so the DC half of the apply changes nothing on a stock machine. On mains (AC) the stock value is "Important Wake Timers Only", which already excludes ordinary scheduled tasks and allows only timers Windows marks as important (such as update restarts). The real effect of this tweak on a stock machine is therefore AC from 2 to 0: even the important wake timers stop waking the PC on mains power.
 
-As with USB selective suspend, only the scheme active at apply time is changed, each changed scheme is recorded by GUID so the undo returns to every scheme it changed, and `/SETACTIVE` applies the change without a reboot.
+As with USB selective suspend, only the scheme active at apply time is changed, and activating it again applies the change without a reboot.
 
 #### Benefits
 - The PC stays asleep: no 3 a.m. maintenance or update wake with fans spinning up.
 - An unattended laptop is not woken to do work.
 - Removes the "important" wake timers on mains power that stock Windows still allows.
-- The revert restores the exact prior indices, so apply then revert never leaves the machine more wake-prone than before.
+- Restore writes back the exact recorded indexes to the plan they were read from, so apply then restore never leaves the machine more wake-prone than before.
 
 #### Drawbacks
 - Legitimate scheduled wakes stop: overnight backups, media recording and alarms that rely on waking the machine.
 - Windows Update maintenance may only run while you are using the PC.
 - On battery nothing changes on a stock Windows 11 machine, since wake timers are already disabled there.
-- Only the plan active at apply time is changed; switching plans brings wake timers back until you apply again on the new plan (a revert then restores both).
+- Only the plan active at apply time is changed; switching plans brings wake timers back until you apply again on the new plan.
 - Wake sources that are not timers (a keyboard, mouse, network adapter wake, or the lid) are unaffected.
 
 #### Applies to, takes effect, reverting
-- **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, in any display language, on hardware with RTC wake. Requires administrator.
-- **Takes effect**: immediately; the scheme is re-activated on apply.
-- **Reverting**: turning the switch off (System Default) runs the undo, restoring the recorded AC and DC indices on every plan the tweak changed, without changing which plan is active.
+- **Applies to**: Windows 11 24H2 and newer, and Windows 10 including LTSC 2021, all editions, in any display language, on hardware with RTC wake. Requires administrator (the setting itself is writable as a standard user; the snapshot path below needs administrator).
+- **Takes effect**: immediately; the scheme is activated again on apply.
+- **Reverting**: selecting System Default runs Restore, which writes the AC and DC indexes recorded before you applied back to the plan they were read from, activating it again only if it is still the active plan, so your plan is never switched. If that plan has been deleted since, there is nothing to restore. A snapshot taken while this tweak was a script restores through that script's undo (`wake_timers_off` above), which writes every plan it recorded back without changing which plan is active.
 
 #### Interactions
-- [Disable USB selective suspend](#disable-usb-selective-suspend) uses the same scheme-pinned pattern on another setting; independent.
+- [Disable USB selective suspend](#disable-usb-selective-suspend) uses the same kind on another setting; independent.
 - [performance] `ultimate_performance_power_plan` switches the active scheme; this tweak's change stays on the old plan.
 - [Disable NIC power management](#disable-nic-power-management) writes value 24, which also stops network adapters waking the PC from standby; a different wake source.
 - Windows Update maintenance and scheduled backups that rely on waking the PC stop waking it.
 
 #### Validation
-- **Verdict**: VERIFIED-WITH-CORRECTION. The setting and aliases are correct; the corrections concerned the revert and the stock state: stock Windows 11 Balanced is AC 2 and DC 0 (not "Enable" on both), so the revert must restore the recorded indices, pin the scheme, and the probe must check both rails. The shipped action does all of this, refuses to apply when it cannot read the current indices rather than guessing them, and never switches the active plan on revert.
-- **Confidence**: Microsoft-documented (Microsoft's "Automatically wake for tasks" and sleep settings pages), plus `powercfg /aliases` and `/QUERY` on 26100 for the three indices and stock values.
-- **Reasoning**: the adversarial pass identified a revert to "Enable" on both rails as the most consequential revert defect in the category, because it would leave a machine waking on battery where it never did; the shipped undo restores only recorded values and never writes a guessed pair. The stock values are from one owner-modified machine plus Balanced defaults; a clean-image baseline is the open question.
-- **Tested**: Build validation (schema, ownership and conflict checks). Under Windows PowerShell 5.1 on build 26100: apply, probe, undo and probe again restore the original AC and DC indices exactly; and applying on one plan, switching to a second plan, applying again and then undoing restored both plans' original indices while leaving the second plan active.
+- **Verdict**: VERIFIED-WITH-CORRECTION. The setting and aliases are correct; the corrections concerned the revert and the stock state: stock Windows 11 Balanced is AC 2 and DC 0 (not "Enable" on both), so the revert must restore the recorded indexes and detection must check both rails. The shipped tweak does this through the snapshot, which records the plan with the indexes, so Restore pins the scheme, never switches the active plan, and never writes a guessed pair.
+- **Confidence**: Microsoft-documented (Microsoft's "Automatically wake for tasks" and sleep settings pages), plus `powercfg /aliases` and `/QUERY` on 26100 for the three indexes and stock values.
+- **Reasoning**: the adversarial pass identified a revert to "Enable" on both rails as the most consequential revert defect in the category, because it would leave a machine waking on battery where it never did; Restore writes only recorded values. The stock values are from one owner-modified machine plus Balanced defaults; a clean-image baseline is the open question.
+- **Tested**: Build validation (schema, ownership and conflict checks). Unit tests drive the power setting kind through a fake power API (capture, drive, verify, restore, a plan switch before Restore, a deleted plan), and an engine test restores a capture to its own plan while another plan is active. A live read of the active scheme on build 26100 returned AC 2 and DC 0. Apply and Restore on a real machine are pending a manual check.
 
 #### Recommendation
 Worth applying if a PC that wakes itself on mains power at night bothers you. Skip it if you rely on scheduled overnight work, such as automated backups, that needs to wake the machine.

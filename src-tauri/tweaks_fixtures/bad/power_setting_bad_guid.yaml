@@ -1,0 +1,19 @@
+category:
+  id: power_setting_bad_guid
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "A power setting addressed by an alias, not a GUID."
+
+tweaks:
+  - id: t
+    name: "t"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: p
+        power_setting: { subgroup: '238c9fa8-0aad-41ed-83f4-97be242c8f20', setting: 'RTCWAKE', label: "Allow wake timers" }
+    options:
+      - label: "Off"
+        values: { p: { ac: 0, dc: 0 } }

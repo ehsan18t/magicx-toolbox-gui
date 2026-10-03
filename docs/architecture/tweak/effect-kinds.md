@@ -20,6 +20,8 @@ flowchart LR
     Task["task"]
     Hosts["hosts"]
     Fw["firewall"]
+    Pow["power setting"]
+    Aud["audit flag"]
   end
   Engine --> Action["Action runner<br/>apply, undo, probe"]
   Reg --> RegSvc["registry_service"]
@@ -27,6 +29,8 @@ flowchart LR
   Task --> Sched["scheduler_service (COM)"]
   Hosts --> HostsSvc["hosts_service"]
   Fw --> FwSvc["firewall_service"]
+  Pow --> PowSvc["power_service (powrprof)"]
+  Aud --> AudSvc["audit_service (advapi32)"]
   Action --> Proc["PowerShell or cmd<br/>in a job object"]
 ```
 
@@ -46,6 +50,8 @@ flowchart LR
 | Task | Enabled state through Task Scheduler COM. A task that does not exist reads `Missing`; an unrecognized state is an error. | Checks the task exists, then enables or disables it. | COM calls are serialized process-wide. |
 | Hosts entry | Whether the entry exists. | Adds or removes it; both are idempotent. | Edits go through an atomic file replace under a process-wide lock. No `ti` path. |
 | Firewall rule | Whether the rule exists (COM). | Adds or deletes the rule. | Recreates only the fields the tweak authors. No `ti` path. |
+| Power setting | Both indexes (AC and DC) of the setting in the active scheme, tagged with that scheme's GUID. A setting this machine lacks is a not-found error. | Writes both indexes, then activates the scheme again if it is the active one, which is what applies them. A drive back to a captured value goes to the scheme in its tag; a deleted scheme reads `Missing`, so there is nothing to restore. | `services/power_service.rs`. Works at `user`. No `ti` path. |
+| Audit flag | Whether the subcategory audits that outcome (success or failure). | Reads the subcategory, changes only its own flag and writes it back, under a process-wide lock. No auditing is written as the explicit none flag, because a written 0 means "unchanged"; clearing a flag clears both first, then sets the one kept, which is correct whether a write replaces or adds. | `services/audit_service.rs`, which enables `SeSecurityPrivilege` around each call, so reads and drives need `admin`. No `ti` path. |
 
 ### Missing resources
 
@@ -74,15 +80,18 @@ The kinds are where Windows results become typed answers, so this is where the c
 
 A new Setting kind needs:
 
-1. a model variant and a value domain in `model.rs`, with a YAML spelling in `schema.rs`;
-2. ownership keys in the validator so "one address, one owner" covers it, and a canonicalization rule if its state is also reachable as raw registry;
-3. read and drive in a new `kinds/` module that keeps the error classes apart;
-4. a broker operation if it must ever run at `ti`, or an explicit refusal at that level;
-5. an entry in [TWEAK_AUTHORING.md](../../TWEAK_AUTHORING.md) and in this page.
+1. a model variant and a value domain in `model.rs` (with its `kind()` noun, `Setting::yaml_key` and `Setting::has_broker_op`), and a YAML spelling in `schema.rs`;
+2. ownership keys in the validator (`coarse_key_and_field`) so "one address, one owner" covers it, and a canonicalization rule if its state is also reachable as raw registry;
+3. read and drive in a new `kinds/` module that keeps the error classes apart, dispatched from `AllKinds::read` and `AllKinds::drive` in `engine/mod.rs`;
+4. a broker operation in `broker_ops_for` if it must ever run at `ti`; otherwise the build guard and the dispatcher refuse that level already;
+5. a change view in `commands/tweaks.rs` (`push_setting_change`, a list on `TweakOptionView` counted by `every_valued_setting_effect_reaches_the_option_view`, and `effect_display_name`), regenerated bindings, and a row kind in `src/lib/utils/changeMatrix.ts` (`KIND_META`, `KIND_ORDER`, an icon registered in `$lib/design/icons.ts`);
+6. an entry in [TWEAK_AUTHORING.md](../../TWEAK_AUTHORING.md) and in this page.
 
 ## Traps
 
-- **Hosts and firewall effects routed to `ti` fail at run time**, not at build time: the validator only stops actions at `ti`.
+- **A power value's plan tag never takes part in equality.** Detection compares authored values (no tag) with readings (tagged), so `PlanTag` equals every other tag; deriving `PartialEq` on it would make every power tweak read System Default.
+- **Every effect no broker op carries is a build error at `ti`** (`UnbrokeredAtTrustedInstaller`), except an HKCU packed field, which runs as the user whatever the level ([elevation.md](elevation.md#levels-and-routing)).
+- **An action converted to a typed kind keeps its old id as an action** that no option runs, so Restore can still undo entries that journal it ([TWEAK_AUTHORING.md §12.10](../../TWEAK_AUTHORING.md#1210-converting-an-action-to-a-typed-kind)).
 - **Inside the TrustedInstaller child, HKCU is the system account's hive.** That is why per-user registry effects always run in-process as the real user; see [elevation.md](elevation.md#levels-and-routing).
 - **In a rollback, a batch that proves zero completed operations verifies none of them.** The items before the failing one are driven again, the failing one is recorded, and the rest are driven after it. A could-not-acquire failure re-drives nothing. A forward apply just fails and rolls back.
 - **A service whose `Start` value cannot be read reports a generic error**, even when the cause is access denied, so detection shows Unknown without the "needs elevation" hint.

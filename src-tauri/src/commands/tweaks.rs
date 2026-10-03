@@ -29,8 +29,8 @@ use crate::tweaks::engine::{
     Phase, ProbeCache, RealActions, RealProbe,
 };
 use crate::tweaks::model::{
-    ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, Level, Opt, OptLabel, OptValue,
-    Probe, RiskLevel, Setting, SharedId, StartupType, Tweak, TypedRegValue, Value,
+    ActionDef, AuditEvent, CategoryDef, Corpus, Effect, EffectDef, EffectId, Level, Opt, OptLabel,
+    OptValue, Probe, RiskLevel, Setting, SharedId, StartupType, Tweak, TypedRegValue, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{
@@ -413,8 +413,26 @@ pub struct TweakOptionView {
     pub scheduler_changes: Vec<SchedulerChangeView>,
     pub hosts_changes: Vec<HostsChangeView>,
     pub firewall_changes: Vec<FirewallChangeView>,
+    pub power_changes: Vec<PowerChangeView>,
+    pub audit_changes: Vec<AuditChangeView>,
     /// Action scripts this option runs (Appx removal, powercfg, DISM, …), shown verbatim.
     pub commands: Vec<String>,
+}
+
+impl TweakOptionView {
+    fn empty(label: String) -> Self {
+        Self {
+            label,
+            registry_changes: Vec::new(),
+            service_changes: Vec::new(),
+            scheduler_changes: Vec::new(),
+            hosts_changes: Vec::new(),
+            firewall_changes: Vec::new(),
+            power_changes: Vec::new(),
+            audit_changes: Vec::new(),
+            commands: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -539,6 +557,26 @@ pub struct FirewallChangeView {
     pub skip_validation: bool,
 }
 
+/// One setting of the active power scheme: its AC (plugged in) and DC (on battery) indexes.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct PowerChangeView {
+    pub name: String,
+    pub subgroup: String,
+    pub setting: String,
+    pub ac: u32,
+    pub dc: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct AuditChangeView {
+    pub name: String,
+    pub subcategory: String,
+    pub event: AuditEvent,
+    pub audited: bool,
+}
+
 /// Appends the display change(s) for one `Setting` driven to `value` by this option.
 fn push_setting_change(
     setting: &Setting,
@@ -647,21 +685,34 @@ fn push_setting_change(
                 });
             }
         }
+        Setting::Power(p) => {
+            if let Value::PowerIndex { ac, dc, .. } = value {
+                o.power_changes.push(PowerChangeView {
+                    name: effect_display_name(effect),
+                    subgroup: p.subgroup.clone(),
+                    setting: p.setting.clone(),
+                    ac: *ac,
+                    dc: *dc,
+                });
+            }
+        }
+        Setting::Audit(a) => {
+            if let Value::Audited(audited) = value {
+                o.audit_changes.push(AuditChangeView {
+                    name: effect_display_name(effect),
+                    subcategory: a.subcategory.clone(),
+                    event: a.event,
+                    audited: *audited,
+                });
+            }
+        }
     }
 }
 
 /// Projects one option into the concrete changes it drives across the tweak's surface (joining each
 /// surface `EffectDef`'s address with this option's value for the same `EffectId`).
 fn option_view(tweak: &Tweak, opt: &Opt, corpus: &Corpus) -> TweakOptionView {
-    let mut o = TweakOptionView {
-        label: opt.label.0.clone(),
-        registry_changes: Vec::new(),
-        service_changes: Vec::new(),
-        scheduler_changes: Vec::new(),
-        hosts_changes: Vec::new(),
-        firewall_changes: Vec::new(),
-        commands: Vec::new(),
-    };
+    let mut o = TweakOptionView::empty(opt.label.0.clone());
     for effect in &tweak.surface {
         let value_for_effect = opt.values.get(&effect.id);
         match &effect.kind {
@@ -853,6 +904,8 @@ pub(super) fn effect_display_name(effect: &EffectDef) -> String {
         Setting::Task(t) => leaf_of(&t.path, '\\'),
         Setting::Hosts(h) => h.domain.clone(),
         Setting::Firewall(r) => r.name.clone(),
+        Setting::Power(p) => p.label.clone(),
+        Setting::Audit(a) => format!("{} ({})", a.label, a.event.as_str()),
     }
 }
 
@@ -870,15 +923,7 @@ fn observed_view(tweak: &Tweak, observed: &[ObservedEffect]) -> Option<ObservedS
     if observed.is_empty() {
         return None;
     }
-    let mut changes = TweakOptionView {
-        label: "Your system right now".to_string(),
-        registry_changes: Vec::new(),
-        service_changes: Vec::new(),
-        scheduler_changes: Vec::new(),
-        hosts_changes: Vec::new(),
-        firewall_changes: Vec::new(),
-        commands: Vec::new(),
-    };
+    let mut changes = TweakOptionView::empty("Your system right now".to_string());
     let mut agreement = Vec::new();
     for o in observed {
         let Some(effect) = tweak.surface.iter().find(|e| e.id == o.effect) else {
@@ -2632,6 +2677,26 @@ mod tests {
         assert!(!has_script_probe(&tweak("t", vec![])));
     }
 
+    #[test]
+    fn the_power_and_audit_tweaks_scan_on_the_native_pool() {
+        for id in [
+            "disable_usb_selective_suspend",
+            "disable_wake_timers",
+            "audit_logon_events",
+            "audit_process_creation_cmdline",
+        ] {
+            let t = compiled_corpus()
+                .tweaks
+                .iter()
+                .find(|t| t.id == id)
+                .unwrap();
+            assert!(
+                !has_script_probe(t),
+                "{id} must not spawn a script to detect"
+            );
+        }
+    }
+
     // Deadlocks (then times out) if the work runs on the calling async worker: the sender below
     // shares that current-thread runtime and only runs while the command is parked.
     #[tokio::test]
@@ -2709,7 +2774,7 @@ mod tests {
 
     /// A kind `push_setting_change` stops projecting renders as a silently empty details section,
     /// which apply/detect tests never catch. So every valued Setting effect in the shipped corpus
-    /// must land in exactly one of the six change lists.
+    /// must land in exactly one of the change lists.
     #[test]
     fn every_valued_setting_effect_reaches_the_option_view() {
         let corpus = compiled_corpus();
@@ -2736,7 +2801,9 @@ mod tests {
                     + v.service_changes.len()
                     + v.scheduler_changes.len()
                     + v.hosts_changes.len()
-                    + v.firewall_changes.len();
+                    + v.firewall_changes.len()
+                    + v.power_changes.len()
+                    + v.audit_changes.len();
                 assert_eq!(
                     projected, valued_settings,
                     "tweak `{}` option `{}`: {valued_settings} valued Setting effects but only \

@@ -4,15 +4,15 @@
 //! authorable: a Firewall `shared:` variant and `ActionDef::DeleteTree`.
 
 use super::model::{
-    ActionDef, AppDef, AppSource, CategoryDef, Corpus, Effect, EffectDef, EffectId, FieldAddr,
-    FwAction, FwDirection, FwProtocol, HostsAddr, InstallSource, KeyAddr, Level, Opt, OptLabel,
-    OptValue, PackedFormat, Probe, RegAddr, RegType, RiskLevel, RuleAddr, ScopedValue, Script,
-    Setting, SharedDef, SharedId, Shell, StartupType, SvcAddr, TaskAddr, Tweak, Value,
-    WindowsScope,
+    ActionDef, AppDef, AppSource, AuditAddr, AuditEvent, CategoryDef, Corpus, Effect, EffectDef,
+    EffectId, FieldAddr, FwAction, FwDirection, FwProtocol, HostsAddr, InstallSource, KeyAddr,
+    Level, Opt, OptLabel, OptValue, PackedFormat, PlanTag, PowerAddr, Probe, RegAddr, RegType,
+    RiskLevel, RuleAddr, ScopedValue, Script, Setting, SharedDef, SharedId, Shell, StartupType,
+    SvcAddr, TaskAddr, Tweak, Value, WindowsScope,
 };
 use super::parse::{
-    expand_product, parse_build_expr, parse_reg_path, parse_value_literal, validate_windows_scope,
-    LiteralInput, LiteralTarget, ParseError,
+    expand_product, parse_build_expr, parse_guid, parse_reg_path, parse_value_literal,
+    validate_windows_scope, LiteralInput, LiteralTarget, ParseError,
 };
 use super::validate::ValidationError;
 use serde::Deserialize;
@@ -279,6 +279,38 @@ struct HostsRaw {
     domain: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PowerSettingRaw {
+    subgroup: String,
+    setting: String,
+    label: String,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum AuditEventRaw {
+    Success,
+    Failure,
+}
+
+impl From<AuditEventRaw> for AuditEvent {
+    fn from(raw: AuditEventRaw) -> Self {
+        match raw {
+            AuditEventRaw::Success => AuditEvent::Success,
+            AuditEventRaw::Failure => AuditEvent::Failure,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuditPolicyRaw {
+    subcategory: String,
+    event: AuditEventRaw,
+    label: String,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum FwDirectionRaw {
@@ -400,6 +432,8 @@ enum EffectRaw {
     Task(TaskEffectRaw),
     Hosts(HostsEffectRaw),
     Firewall(FirewallEffectRaw),
+    PowerSetting(PowerSettingEffectRaw),
+    AuditPolicy(AuditPolicyEffectRaw),
     Shared(SharedRefEffectRaw),
     Action(ActionEffectRaw),
 }
@@ -413,6 +447,8 @@ impl EffectRaw {
             EffectRaw::Task(r) => r.windows.as_ref(),
             EffectRaw::Hosts(r) => r.windows.as_ref(),
             EffectRaw::Firewall(r) => r.windows.as_ref(),
+            EffectRaw::PowerSetting(r) => r.windows.as_ref(),
+            EffectRaw::AuditPolicy(r) => r.windows.as_ref(),
             EffectRaw::Shared(r) => r.windows.as_ref(),
             EffectRaw::Action(r) => r.windows.as_ref(),
         }
@@ -426,6 +462,8 @@ impl EffectRaw {
             EffectRaw::Task(r) => r.elevation,
             EffectRaw::Hosts(r) => r.elevation,
             EffectRaw::Firewall(r) => r.elevation,
+            EffectRaw::PowerSetting(r) => r.elevation,
+            EffectRaw::AuditPolicy(r) => r.elevation,
             EffectRaw::Shared(r) => r.elevation,
             EffectRaw::Action(r) => r.elevation,
         }
@@ -439,7 +477,10 @@ impl EffectRaw {
             EffectRaw::Task(r) => r.optional,
             EffectRaw::Hosts(r) => r.optional,
             EffectRaw::Firewall(r) => r.optional,
-            EffectRaw::Shared(_) | EffectRaw::Action(_) => false,
+            EffectRaw::PowerSetting(_)
+            | EffectRaw::AuditPolicy(_)
+            | EffectRaw::Shared(_)
+            | EffectRaw::Action(_) => false,
         }
     }
 
@@ -453,7 +494,10 @@ impl EffectRaw {
             EffectRaw::Task(r) => r.if_missing.as_ref(),
             EffectRaw::Hosts(r) => r.if_missing.as_ref(),
             EffectRaw::Firewall(r) => r.if_missing.as_ref(),
-            EffectRaw::Shared(_) | EffectRaw::Action(_) => None,
+            EffectRaw::PowerSetting(_)
+            | EffectRaw::AuditPolicy(_)
+            | EffectRaw::Shared(_)
+            | EffectRaw::Action(_) => None,
         }
     }
 }
@@ -541,6 +585,27 @@ struct FirewallEffectRaw {
     optional: bool,
     #[serde(default)]
     if_missing: Option<YamlValue>,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
+}
+/// No `optional`/`if_missing`: these kinds never read Missing.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PowerSettingEffectRaw {
+    id: String,
+    power_setting: PowerSettingRaw,
+    #[serde(default)]
+    elevation: Option<LevelRaw>,
+    #[serde(default)]
+    windows: Option<WindowsRaw>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuditPolicyEffectRaw {
+    id: String,
+    audit_policy: AuditPolicyRaw,
     #[serde(default)]
     elevation: Option<LevelRaw>,
     #[serde(default)]
@@ -689,7 +754,7 @@ fn parse_startup_type(text: &str) -> Result<StartupType, String> {
     }
 }
 
-fn parse_task_enabled(text: &str) -> Result<bool, String> {
+fn parse_enabled(text: &str) -> Result<bool, String> {
     match text {
         "enabled" => Ok(true),
         "disabled" => Ok(false),
@@ -715,7 +780,14 @@ fn setting_value_for(setting: &Setting, node: &YamlValue) -> Result<Value, Strin
             let text = node
                 .as_str()
                 .ok_or_else(|| "a task value must be `enabled` or `disabled`".to_string())?;
-            parse_task_enabled(text).map(Value::TaskEnabled)
+            parse_enabled(text).map(Value::TaskEnabled)
+        }
+        Setting::Power(_) => parse_power_index(node),
+        Setting::Audit(_) => {
+            let text = node
+                .as_str()
+                .ok_or_else(|| "an audit value must be `enabled` or `disabled`".to_string())?;
+            parse_enabled(text).map(Value::Audited)
         }
         // Presence kinds: the `present`/`absent` keywords, same shape-first classification as a
         // registry literal, targeted at `LiteralTarget::Presence` instead of a `RegType`.
@@ -724,6 +796,50 @@ fn setting_value_for(setting: &Setting, node: &YamlValue) -> Result<Value, Strin
             parse_value_literal(input, LiteralTarget::Presence).map_err(|e| e.to_string())
         }
     }
+}
+
+/// `{ ac: <index>, dc: <index> }`, both required: an option owns the whole setting.
+fn parse_power_index(node: &YamlValue) -> Result<Value, String> {
+    const SHAPE: &str = "a power setting value must be `{ ac: <index>, dc: <index> }`";
+    let YamlValue::Mapping(map) = node else {
+        return Err(SHAPE.to_string());
+    };
+    if map.len() != 2 {
+        return Err(SHAPE.to_string());
+    }
+    let index = |key: &str| {
+        let n = node.get(key).ok_or_else(|| SHAPE.to_string())?;
+        n.as_i64()
+            .and_then(|i| u32::try_from(i).ok())
+            .ok_or_else(|| {
+                format!(
+                    "power setting `{key}` must be an integer from 0 to {}",
+                    u32::MAX
+                )
+            })
+    };
+    Ok(Value::PowerIndex {
+        ac: index("ac")?,
+        dc: index("dc")?,
+        plan: PlanTag::default(),
+    })
+}
+
+fn convert_power(raw: &PowerSettingRaw) -> Result<PowerAddr, ParseError> {
+    Ok(PowerAddr {
+        subgroup: parse_guid(&raw.subgroup)?,
+        setting: parse_guid(&raw.setting)?,
+        label: raw.label.clone(),
+        scheme: None,
+    })
+}
+
+fn convert_audit(raw: &AuditPolicyRaw) -> Result<AuditAddr, ParseError> {
+    Ok(AuditAddr {
+        subcategory: parse_guid(&raw.subcategory)?,
+        event: raw.event.into(),
+        label: raw.label.clone(),
+    })
 }
 
 /// Splits a per-option-value node into its literal-value node and an optional per-value
@@ -893,6 +1009,26 @@ fn convert_effect(
                 &r.firewall,
             )))),
         ),
+        EffectRaw::PowerSetting(r) => (
+            &r.id,
+            convert_power(&r.power_setting)
+                .map(|addr| Effect::Setting(Setting::Power(addr)))
+                .map_err(|source| ValidationError::InvalidAddress {
+                    tweak: tweak_id.to_string(),
+                    effect: EffectId(r.id.clone()),
+                    source,
+                }),
+        ),
+        EffectRaw::AuditPolicy(r) => (
+            &r.id,
+            convert_audit(&r.audit_policy)
+                .map(|addr| Effect::Setting(Setting::Audit(addr)))
+                .map_err(|source| ValidationError::InvalidAddress {
+                    tweak: tweak_id.to_string(),
+                    effect: EffectId(r.id.clone()),
+                    source,
+                }),
+        ),
         EffectRaw::Shared(r) => (&r.id, Ok(Effect::Shared(SharedId(r.shared.clone())))),
         EffectRaw::Action(r) => (
             &r.id,
@@ -1026,6 +1162,8 @@ fn effect_id_of(raw: &EffectRaw) -> &str {
         EffectRaw::Task(r) => &r.id,
         EffectRaw::Hosts(r) => &r.id,
         EffectRaw::Firewall(r) => &r.id,
+        EffectRaw::PowerSetting(r) => &r.id,
+        EffectRaw::AuditPolicy(r) => &r.id,
         EffectRaw::Shared(r) => &r.id,
         EffectRaw::Action(r) => &r.id,
     }
@@ -1677,6 +1815,62 @@ mod tests {
                 "{file}: {errors:?}"
             );
         }
+    }
+
+    #[test]
+    fn power_and_audit_kinds_load_with_canonical_guids() {
+        let corpus =
+            load_corpus(&fixture("kinds/power_and_audit.yaml")).expect("fixture must load");
+        let effect = |tweak: &str, id: &str| {
+            let tweak = corpus.tweaks.iter().find(|t| t.id == tweak).unwrap();
+            let effect = tweak.surface.iter().find(|e| e.id.0 == id).unwrap();
+            let values: Vec<OptValue> = tweak
+                .options
+                .iter()
+                .map(|o| o.values[&effect.id].clone())
+                .collect();
+            (effect.kind.clone(), values)
+        };
+        let set = |value, windows| OptValue::Set(ScopedValue { value, windows });
+
+        let (kind, values) = effect("wake_timers", "wake");
+        assert_eq!(
+            kind,
+            Effect::Setting(Setting::Power(PowerAddr {
+                subgroup: "238c9fa8-0aad-41ed-83f4-97be242c8f20".into(),
+                setting: "bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d".into(),
+                label: "Allow wake timers".into(),
+                scheme: None,
+            }))
+        );
+        let power = |ac, dc| Value::PowerIndex {
+            ac,
+            dc,
+            plan: PlanTag::default(),
+        };
+        assert_eq!(values[0], set(power(0, 0), None));
+        let OptValue::Set(ScopedValue { value, windows }) = &values[1] else {
+            panic!("expected a scoped power value, got {:?}", values[1]);
+        };
+        assert_eq!(*value, power(1, 1));
+        assert!(windows.is_some());
+
+        let (kind, values) = effect("logon_audit", "logon_failure");
+        assert_eq!(
+            kind,
+            Effect::Setting(Setting::Audit(AuditAddr {
+                subcategory: "0cce9215-69ae-11d9-bed3-505054503030".into(),
+                event: AuditEvent::Failure,
+                label: "Logon".into(),
+            }))
+        );
+        assert_eq!(
+            values,
+            [
+                set(Value::Audited(true), None),
+                set(Value::Audited(false), None)
+            ]
+        );
     }
 
     #[test]

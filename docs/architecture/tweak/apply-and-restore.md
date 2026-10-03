@@ -67,7 +67,7 @@ sequenceDiagram
   loop each effect in declaration order
     alt single Setting, any level
       E->>K: drive (a ti Setting goes through the broker)
-      K->>W: registry, SCM, COM, hosts, firewall
+      K->>W: registry, SCM, COM, hosts, firewall, power, audit
       E->>K: read back and compare
     else two or more adjacent TI Settings
       E->>B: one batch of ops

@@ -1,5 +1,5 @@
 //! The `EffectKind` contract (spec §5): one trait every address kind implements, so the engine can
-//! treat Registry/RegistryKey/Service/Task/Hosts/Firewall uniformly and mock any of them in tests.
+//! treat every address kind uniformly and mock any of them in tests.
 //!
 //! ## Where the elevation decision lives
 //!
@@ -14,12 +14,14 @@
 //! `registry.rs`/`service.rs`/`task.rs`) and submitting them through `elevation::run_ops` in one
 //! child. Translation sits beside the address shape it understands; dispatch sits above every
 //! kind. Each `drive` here still rejects `Ti` itself, so a kind called directly can never
-//! silently escalate. Hosts/Firewall have no `BrokerOp`, so they reach that rejection at those
-//! levels.
+//! silently escalate. Hosts, Firewall, Power and Audit have no `BrokerOp`, so they
+//! reach that rejection at `Ti`.
 
 pub mod action;
+pub mod audit;
 pub mod firewall;
 pub mod hosts;
+pub mod power;
 pub mod registry;
 pub mod service;
 pub mod task;
@@ -219,8 +221,8 @@ fn guard_level(cx: &ExecCx) -> Result<(), Error> {
     }
 }
 
-/// Classifies the backing primitive's error by the Win32 code it carries, so Hosts and Firewall --
-/// which have no broker path -- read the same as a refused broker op. Never produces
+/// Classifies the backing primitive's error by the Win32 code it carries, so kinds with no broker
+/// path read the same as a refused broker op. Never produces
 /// `Value::Missing`: an absent resource is the caller's call (invariant 2), never an error's.
 pub(crate) fn map_backend_error(e: BackendError) -> Error {
     let detail = e.to_string();

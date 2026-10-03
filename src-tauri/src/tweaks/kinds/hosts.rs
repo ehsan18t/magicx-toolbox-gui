@@ -19,11 +19,7 @@ impl EffectKind for HostsKind {
         // Reads never escalate (spec invariant 24) -- `cx` is unused here on purpose.
         match s {
             Setting::Hosts(addr) => read_hosts(addr),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Service(_)
-            | Setting::Task(_)
-            | Setting::Firewall(_) => Err(Error::Invalid("HostsKind cannot read this Setting")),
+            _ => Err(Error::Invalid("HostsKind cannot read this Setting")),
         }
     }
 
@@ -31,11 +27,7 @@ impl EffectKind for HostsKind {
         guard_level(cx)?;
         match s {
             Setting::Hosts(addr) => drive_hosts(addr, target),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Service(_)
-            | Setting::Task(_)
-            | Setting::Firewall(_) => Err(Error::Invalid("HostsKind cannot drive this Setting")),
+            _ => Err(Error::Invalid("HostsKind cannot drive this Setting")),
         }
     }
 }

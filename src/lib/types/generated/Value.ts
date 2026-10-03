@@ -6,4 +6,4 @@ import type { TypedRegValue } from "./TypedRegValue";
  * The one value domain shared by capture, apply, detect, and restore (spec §5, invariant 1).
  * `Missing` is capture-only (spec §5.4); the parser/validator enforce that, not this type.
  */
-export type Value = "Absent" | "Missing" | { "Reg": TypedRegValue } | { "Startup": StartupType } | { "TaskEnabled": boolean } | { "Present": boolean };
+export type Value = "Absent" | "Missing" | { "Reg": TypedRegValue } | { "Startup": StartupType } | { "TaskEnabled": boolean } | { "Present": boolean } | { "PowerIndex": { ac: number, dc: number, plan?: string, } } | { "Audited": boolean };

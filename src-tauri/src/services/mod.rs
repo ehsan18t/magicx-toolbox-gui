@@ -1,8 +1,11 @@
 pub mod appx_index;
+pub mod audit_service;
 pub mod elevation;
 pub mod exclusive_temp;
 pub mod firewall_service;
 pub mod hosts_service;
+pub mod power_service;
+pub mod privilege;
 pub mod registry_service;
 pub mod registry_value;
 pub mod scheduler_service;
@@ -16,6 +19,21 @@ pub mod ti_probe;
 pub fn wide(s: impl AsRef<std::ffi::OsStr>) -> Vec<u16> {
     use std::os::windows::ffi::OsStrExt;
     s.as_ref().encode_wide().chain(std::iter::once(0)).collect()
+}
+
+pub fn guid(canonical: &str) -> Result<windows_sys::core::GUID, crate::error::Error> {
+    crate::tweaks::parse::guid_u128(canonical)
+        .map(windows_sys::core::GUID::from_u128)
+        .ok_or_else(|| crate::error::Error::ValidationError(format!("{canonical:?} is not a GUID")))
+}
+
+/// The canonical spelling `guid` reads: lowercase, hyphenated, no braces.
+pub fn guid_string(g: &windows_sys::core::GUID) -> String {
+    let d = g.data4;
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        g.data1, g.data2, g.data3, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]
+    )
 }
 
 /// `FOLDERID_LocalAppData`, as Tauri resolves it: the environment variable can be overridden.

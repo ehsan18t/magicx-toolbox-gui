@@ -1,0 +1,71 @@
+category:
+  id: dup_typed_addresses
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "The same power setting and audit flag owned twice, spelled differently; the other audit flag is a separate address."
+
+tweaks:
+  - id: power_a
+    name: "power_a"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: p
+        power_setting: { subgroup: '238c9fa8-0aad-41ed-83f4-97be242c8f20', setting: 'bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d', label: "Allow wake timers" }
+    options:
+      - label: "Off"
+        values: { p: { ac: 0, dc: 0 } }
+
+  - id: power_b
+    name: "power_b"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: p
+        power_setting: { subgroup: '{238C9FA8-0AAD-41ED-83F4-97BE242C8F20}', setting: 'BD3B718A-0680-4D9D-8AB2-E1D2B4AC806D', label: "Allow wake timers" }
+    options:
+      - label: "Off"
+        values: { p: { ac: 0, dc: 0 } }
+
+  - id: audit_a
+    name: "audit_a"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: a
+        audit_policy: { subcategory: '{0CCE9215-69AE-11D9-BED3-505054503030}', event: success, label: "Logon" }
+    options:
+      - label: "On"
+        values: { a: enabled }
+
+  - id: audit_b
+    name: "audit_b"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: a
+        audit_policy: { subcategory: '{0cce9215-69ae-11d9-bed3-505054503030}', event: success, label: "Logon" }
+    options:
+      - label: "On"
+        values: { a: enabled }
+
+  - id: audit_c
+    name: "audit_c"
+    description: "Fixture tweak."
+    risk_level: low
+    elevation: admin
+    reversible: true
+    effects:
+      - id: a
+        audit_policy: { subcategory: '{0CCE9215-69AE-11D9-BED3-505054503030}', event: failure, label: "Logon" }
+    options:
+      - label: "On"
+        values: { a: enabled }

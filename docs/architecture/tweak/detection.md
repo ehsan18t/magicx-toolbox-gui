@@ -45,7 +45,7 @@ flowchart TD
 
 ### Reading the surface
 
-- **Settings** are read through their effect kind. A resource that does not exist reads as `Missing`. If the effect is `optional`, the reading becomes its `if_missing` value (or `Missing` if none is declared). If it is not optional, the tweak is Unknown. Access denied makes the tweak Unknown with the elevation hint. A value of the wrong registry type, or a packed string that does not parse, makes it Unknown as malformed.
+- **Settings** are read through their effect kind. A resource that does not exist reads as `Missing`. If the effect is `optional`, the reading becomes its `if_missing` value (or `Missing` if none is declared). If it is not optional, the tweak is Unknown. Access denied makes the tweak Unknown with the elevation hint; an audit policy flag always reads that way until the app runs as administrator, because reading the audit policy needs `SeSecurityPrivilege`. Power settings and audit flags are read through native APIs, so those tweaks scan on the main pool, not the script probe pool. A value of the wrong registry type, or a packed string that does not parse, makes it Unknown as malformed.
 - **Shared** effects ask the claims store for the current holders. An unreadable claims file makes the tweak Unknown.
 - **Actions** contribute only when they are scripts with a probe. The probe says whether the action's effect is present.
 

@@ -50,7 +50,7 @@ classDiagram
 
 An effect is one of three things:
 
-- **Setting**: a readable, drivable address. Six kinds: registry value (optionally one field inside a packed `key=value;` string), registry key presence, service startup type, scheduled task enabled state, hosts file entry, and firewall rule presence. Settings are always detectable and always reversible, because the engine can read the old value and write it back.
+- **Setting**: a readable, drivable address. Eight kinds: registry value (optionally one field inside a packed `key=value;` string), registry key presence, service startup type, scheduled task enabled state, hosts file entry, firewall rule presence, one power plan setting of the active scheme (its AC and DC indexes together), and one flag (success or failure) of an advanced audit policy subcategory. Settings are always detectable and always reversible, because the engine can read the old value and write it back.
 - **Shared**: a reference to a corpus-wide shared setting. Options say `claim` or `unclaimed` for it, never a value. See [persistence.md](persistence.md#shared-claims).
 - **Action**: a script (PowerShell or cmd) with an `apply`, and optionally an `undo` and a `probe`. An action is reversible only if it has an undo, and detectable only if it has a probe. A probe can be a script or a registry DWORD check. Removing an app is not an action: it is an [app item](apps.md). An **ephemeral** action (for example "restart Explorer") has neither and exists only to make a change take effect.
 
@@ -66,6 +66,8 @@ One value type serves capture, apply, detection and restore:
 | `Startup` | A service startup type, from boot to disabled, including automatic delayed. |
 | `TaskEnabled` | Whether a scheduled task is enabled. |
 | `Present` | Whether a key, hosts entry or firewall rule exists. |
+| `PowerIndex` | A power setting's AC (plugged in) and DC (on battery) indexes. A reading also carries the plan it came from, so a captured value goes back to that plan; the plan never takes part in comparison. |
+| `Audited` | Whether an audit policy flag is on. |
 
 `Absent` and `Present(false)` are different values by construction, so a registry value that was deleted can never be confused with a key that does not exist. The only way to author a deletion is the keyword `absent`; a `null` (an empty YAML node) or omitted value is a build error (ADR-0004). A quoted empty string `""` is a valid string value.
 
@@ -101,13 +103,13 @@ flowchart TD
 ### Structural guards (run once)
 
 - Tweak ids use `[a-z0-9_]` and are unique ignoring case, because each id names a folder under `snapshots/`.
-- **One address, one owner** (ADR-0006): no two owners (effects of any tweak, including two effects of the same tweak, or shared setting declarations) may manage the same registry value, service, task, hosts entry or firewall rule, unless their Windows scopes never overlap. A packed registry value is either owned whole or split by field, with one owner per field. Registry, service and task names compare case-insensitively. A shared setting counts as owning its address on every build.
+- **One address, one owner** (ADR-0006): no two owners (effects of any tweak, including two effects of the same tweak, or shared setting declarations) may manage the same registry value, service, task, hosts entry, firewall rule, power setting or audit flag, unless their Windows scopes never overlap. A packed registry value is either owned whole or split by field, with one owner per field; an audit subcategory is split by flag the same way. Registry, service and task names compare case-insensitively, and power and audit GUIDs are stored in one canonical spelling. A shared setting counts as owning its address on every build.
 - **Key subtrees**: nothing another owner manages may sit beneath a `registry_key` effect, whether or not that key is ever driven absent. Within one tweak, a value may not sit beneath a key that tweak can drive absent.
-- **Kind canonicalization**: a service's `Start` value or a task's registry storage must be managed through the Service or Task kind, never as a raw registry value, so one state cannot be claimed through two routes.
+- **Kind canonicalization**: a service's `Start` value, a task's registry storage or a power scheme's stored indexes must be managed through the Service, Task or power setting kind, never as a raw registry value, so one state cannot be claimed through two routes.
 - No typed effect may disable the TrustedInstaller service, because the app's own elevation path depends on it.
 - **Coverage**: every option gives a value for every Setting effect, and an explicit `claim` or `unclaimed` for every Shared effect.
 - The declared `reversible` flag must equal the computed one.
-- `if_missing` requires `optional`. An ephemeral action has no undo or probe. An action may never run at the `ti` level. Action timeouts are 1 to 1800 seconds.
+- `if_missing` requires `optional`. An ephemeral action has no undo or probe. An effect no broker operation carries (an action, a hosts entry, a firewall rule, a power setting, an audit flag, or an HKLM packed registry field) may never run at the `ti` level. Action timeouts are 1 to 1800 seconds.
 - A `revision` scope is rejected everywhere (see [Traps](#traps)).
 
 ### Semantic guards (run per milestone)

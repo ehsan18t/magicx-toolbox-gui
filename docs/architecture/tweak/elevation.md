@@ -96,7 +96,7 @@ sequenceDiagram
    | Could not acquire | Nothing ran: TrustedInstaller could not be started or opened, the child could not be created, or it refused the request. | A failure where nothing changed. |
    | Outcome unknown | Timeout, a crash or panic, an unreadable, oversized (over 256 KiB) or inconsistent response, a nonce or version mismatch. | A failure whose effect is uncertain: the snapshot entry is kept and the tweak needs attention. |
 
-The operations the child can run are fixed and typed: set, delete or create registry values and keys, set a service's startup type, and enable or disable a scheduled task. There is no script operation; scripts never run at `ti`.
+The operations the child can run are fixed and typed: set, delete or create registry values and keys, set a service's startup type, and enable or disable a scheduled task. There is no script operation; scripts never run at `ti`. Hosts entries, firewall rules, power settings and audit policy flags have no operation either: they run in the app process at `user` or `admin`, and routing one to `ti` is a build error. An audit flag needs `admin`, and the app enables `SeSecurityPrivilege` around each audit call and disables it again after.
 
 Two or more adjacent `ti` Settings in one tweak are sent in a single batch, so each run of adjacent `ti` Settings spawns one child rather than one per effect. A lone `ti` Setting, a `ti` shared claim or release, and each rollback drive-back run spawn their own child. None of this adds UAC prompts: the app is already elevated before any `ti` step can run.
 

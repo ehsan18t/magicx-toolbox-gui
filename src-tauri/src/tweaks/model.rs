@@ -173,6 +173,44 @@ pub struct RuleAddr {
     pub description: Option<String>,
 }
 
+/// A power plan setting. GUIDs are canonical; `label` is display-only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PowerAddr {
+    pub subgroup: String,
+    pub setting: String,
+    pub label: String,
+    /// `None` addresses the active plan, as every authored effect does. `Some` only on a drive
+    /// back to a captured value, which goes to the plan it was read from ([`Setting::pinned_to`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheme: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "lowercase")]
+pub enum AuditEvent {
+    Success,
+    Failure,
+}
+
+impl AuditEvent {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AuditEvent::Success => "success",
+            AuditEvent::Failure => "failure",
+        }
+    }
+}
+
+/// One outcome flag of an advanced audit policy subcategory, so a tweak can own success auditing
+/// while leaving failure auditing alone. The GUID is canonical; `label` is display-only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuditAddr {
+    pub subcategory: String,
+    pub event: AuditEvent,
+    pub label: String,
+}
+
 /// One address kind on a tweak's managed surface (spec §5).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Setting {
@@ -182,6 +220,72 @@ pub enum Setting {
     Task(TaskAddr),
     Hosts(HostsAddr),
     Firewall(RuleAddr),
+    Power(PowerAddr),
+    Audit(AuditAddr),
+}
+
+impl Setting {
+    /// The authoring key, as error messages name the kind.
+    pub fn yaml_key(&self) -> &'static str {
+        match self {
+            Setting::Registry(_) => "registry",
+            Setting::RegistryKey(_) => "registry_key",
+            Setting::Service(_) => "service",
+            Setting::Task(_) => "task",
+            Setting::Hosts(_) => "hosts",
+            Setting::Firewall(_) => "firewall",
+            Setting::Power(_) => "power_setting",
+            Setting::Audit(_) => "audit_policy",
+        }
+    }
+
+    /// Whether a `BrokerOp` carries this Setting, which `ti` needs.
+    pub fn has_broker_op(&self) -> bool {
+        match self {
+            Setting::Registry(addr) => addr.field.is_none(),
+            Setting::RegistryKey(_) | Setting::Service(_) | Setting::Task(_) => true,
+            Setting::Hosts(_) | Setting::Firewall(_) | Setting::Power(_) | Setting::Audit(_) => {
+                false
+            }
+        }
+    }
+
+    /// The address a drive back to `captured` goes to: a power reading returns to its own plan,
+    /// which may no longer be the active one.
+    pub fn pinned_to(&self, captured: &Value) -> std::borrow::Cow<'_, Setting> {
+        match (self, captured) {
+            (
+                Setting::Power(addr),
+                Value::PowerIndex {
+                    plan: PlanTag(Some(scheme)),
+                    ..
+                },
+            ) => std::borrow::Cow::Owned(Setting::Power(PowerAddr {
+                scheme: Some(scheme.to_string()),
+                ..addr.clone()
+            })),
+            _ => std::borrow::Cow::Borrowed(self),
+        }
+    }
+}
+
+/// The plan a power reading came from. Every tag equals every other: a power value is its two
+/// indexes, and the tag only says where a captured value goes back. Do not derive `PartialEq`:
+/// detection compares untagged authored values with tagged readings.
+#[derive(Debug, Clone, Default, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PlanTag(pub Option<Box<str>>);
+
+impl PartialEq for PlanTag {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl PlanTag {
+    fn is_unset(&self) -> bool {
+        self.0.is_none()
+    }
 }
 
 /// A typed registry literal (spec §6.2).
@@ -219,6 +323,14 @@ pub enum Value {
     Startup(StartupType),
     TaskEnabled(bool),
     Present(bool),
+    PowerIndex {
+        ac: u32,
+        dc: u32,
+        #[serde(default, skip_serializing_if = "PlanTag::is_unset")]
+        #[cfg_attr(test, ts(optional, as = "Option<String>"))]
+        plan: PlanTag,
+    },
+    Audited(bool),
 }
 
 impl Value {
@@ -236,6 +348,8 @@ impl Value {
             Value::Startup(_) => "a startup type",
             Value::TaskEnabled(_) => "a task state",
             Value::Present(_) => "a presence",
+            Value::PowerIndex { .. } => "a power setting",
+            Value::Audited(_) => "an audit flag",
         }
     }
 
@@ -246,7 +360,8 @@ impl Value {
         if kind != driven.kind() {
             return kind.into();
         }
-        match (self, kind.strip_prefix("a ")) {
+        let noun = kind.strip_prefix("a ").or_else(|| kind.strip_prefix("an "));
+        match (self, noun) {
             (Value::Reg(_), _) => format!("a different {kind} value").into(),
             (_, Some(noun)) => format!("a different {noun}").into(),
             _ => kind.into(),
@@ -498,12 +613,52 @@ mod tests {
             Value::Startup(StartupType::AutomaticDelayed),
             Value::TaskEnabled(true),
             Value::Present(false),
+            Value::PowerIndex {
+                ac: 0,
+                dc: 3,
+                plan: PlanTag(Some("381b4222-f694-41f0-9685-ff5bb260df2e".into())),
+            },
+            Value::Audited(true),
         ];
         for value in values {
             let json = serde_json::to_string(&value).expect("serialize");
             let restored: Value = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(value, restored, "roundtrip mismatch for {value:?}");
         }
+    }
+
+    #[test]
+    fn a_power_value_is_its_indexes_and_the_plan_only_pins_where_it_goes_back() {
+        let tagged = |plan: Option<&str>| Value::PowerIndex {
+            ac: 1,
+            dc: 0,
+            plan: PlanTag(plan.map(Into::into)),
+        };
+        assert_eq!(tagged(Some("a")), tagged(None));
+        assert_eq!(tagged(Some("a")), tagged(Some("b")));
+        assert_ne!(
+            tagged(None),
+            Value::PowerIndex {
+                ac: 1,
+                dc: 1,
+                plan: PlanTag(None)
+            }
+        );
+
+        let active = Setting::Power(PowerAddr {
+            subgroup: "s".into(),
+            setting: "t".into(),
+            label: "l".into(),
+            scheme: None,
+        });
+        let Setting::Power(pinned) = active.pinned_to(&tagged(Some("a"))).into_owned() else {
+            unreachable!()
+        };
+        assert_eq!(pinned.scheme.as_deref(), Some("a"));
+        assert!(matches!(
+            active.pinned_to(&tagged(None)),
+            std::borrow::Cow::Borrowed(_)
+        ));
     }
 
     #[test]
@@ -533,6 +688,8 @@ mod tests {
         assert_send_sync::<TaskAddr>();
         assert_send_sync::<HostsAddr>();
         assert_send_sync::<RuleAddr>();
+        assert_send_sync::<PowerAddr>();
+        assert_send_sync::<AuditAddr>();
         assert_send_sync::<FwDirection>();
         assert_send_sync::<FwAction>();
         assert_send_sync::<FwProtocol>();

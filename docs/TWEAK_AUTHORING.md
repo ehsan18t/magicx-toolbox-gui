@@ -268,8 +268,8 @@ Each entry in a tweak's `effects:` list is one effect: an **`id`** plus **exactl
 effects:
   - id: some_id # your identifier for this effect, referenced from options
     registry:
-      { … } # exactly ONE kind key: registry | registry_key | service |
-      # task | hosts | firewall | shared | action
+      { … } # exactly ONE kind key: registry | registry_key | service | task |
+      # hosts | firewall | power_setting | audit_policy | shared | action
 ```
 
 - The **`id`** is how options refer to this effect (in their `values:` map): it must be unique within the tweak.
@@ -279,18 +279,18 @@ effects:
 
 | field        | applies to                   | meaning                                                                  |
 | ------------ | ---------------------------- | ------------------------------------------------------------------------ |
-| `elevation`  | all 8 kinds                  | per-effect escalation; effective level is `max(tweak floor, this)` (§13) |
-| `windows`    | all 8 kinds                  | version scoping for this one effect (§10)                                |
-| `optional`   | the **6 Setting kinds only** | this resource may legitimately not exist (§8)                            |
-| `if_missing` | the **6 Setting kinds only** | value detection reads when the resource is Missing (§8)                  |
+| `elevation`  | all 10 kinds                 | per-effect escalation; effective level is `max(tweak floor, this)` (§13) |
+| `windows`    | all 10 kinds                 | version scoping for this one effect (§10)                                |
+| `optional`   | **6 Setting kinds** (below)  | this resource may legitimately not exist (§8)                            |
+| `if_missing` | **6 Setting kinds** (below)  | value detection reads when the resource is Missing (§8)                  |
 
-> ⚠️ **Gotcha: `optional`/`if_missing` on `shared` or `action` is a build error.** They are wired only on the six Setting kinds (`registry`, `registry_key`, `service`, `task`, `hosts`, `firewall`). Writing `optional:` or `if_missing:` on a `shared` or `action` effect is rejected as an unknown field.
+> ⚠️ **Gotcha: `optional`/`if_missing` on `power_setting`, `audit_policy`, `shared` or `action` is a build error.** They are wired only on six Setting kinds (`registry`, `registry_key`, `service`, `task`, `hosts`, `firewall`). Writing `optional:` or `if_missing:` on any other effect is rejected as an unknown field.
 
 > ⚠️ **Gotcha: a typo in the kind key gives an opaque error.** Because an effect is modelled as an untagged choice of kinds, misspelling the kind key (`regisrty:` instead of `registry:`) or supplying two kind keys makes _no_ kind match. You will see a YAML-level error like `data did not match any variant of untagged enum EffectRaw` (surfaced as the `Yaml` build error, §16). If you get that message, check that each effect has exactly one, correctly-spelled kind key.
 
-The eight kinds divide into three families:
+The ten kinds divide into three families:
 
-- **Settings** (declarative, reversible by construction, always detectable): `registry`, `registry_key`, `service`, `task`, `hosts`, `firewall`.
+- **Settings** (declarative, reversible by construction, always detectable): `registry`, `registry_key`, `service`, `task`, `hosts`, `firewall`, `power_setting`, `audit_policy`.
 - **Shared** (a reference to a corpus-level shared setting): `shared`.
 - **Action** (the imperative escape hatch): `action`.
 
@@ -467,7 +467,68 @@ Manages **whether a named firewall rule exists**, carrying the full definition n
 
 ---
 
-### 4.7 `shared`: a reference to a corpus-level shared setting
+### 4.7 `power_setting`: a power plan setting
+
+Manages **one setting of the active power plan**: its plugged-in (AC) and on-battery (DC) indexes, as one value.
+
+```yaml
+- id: wake_timers
+  power_setting:
+    { subgroup: "238c9fa8-0aad-41ed-83f4-97be242c8f20", setting: "bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d", label: "Allow wake timers" }
+```
+
+| field      | required | meaning                                                                                          |
+| ---------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `subgroup` | **yes**  | the subgroup GUID, as `powercfg /query` prints it; an alias such as `SUB_SLEEP` is a build error |
+| `setting`  | **yes**  | the power setting GUID                                                                           |
+| `label`    | **yes**  | the name the details panel shows; display only, ignored by the ownership guard                   |
+
+A GUID is written `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`, braces and letter case optional. The build stores one canonical spelling (lowercase, no braces), so two spellings of one GUID are one address for the ownership guard.
+
+**Value domain:** `{ ac: <index>, dc: <index> }`, both keys required, each an integer from 0 to 4294967295. An option always sets both indexes. Per-option-value scoping wraps it like any other value: `{ value: { ac: 0, dc: 0 }, windows: { … } }`.
+
+**Runtime behavior:** `read` returns both indexes of the plan active right now (`PowerReadACValueIndex`, `PowerReadDCValueIndex`); a drive writes both and activates the plan again, which is what makes a changed index take effect. Detection is native, with no script spawn and always reads the active plan. Capture records both indexes **and the plan they came from**; Restore and a rollback write them back to that plan and verify by reading that plan, activating it again only if it is still the active one, so a plan switch between apply and Restore never misdirects the values or switches the user's plan. A captured plan deleted since leaves nothing to restore.
+
+**Level:** works at `user`: Windows lets a standard user change the active plan's settings. It has no broker operation, so routing it to `ti` is a build error (§13.7).
+
+> ⚠️ **Only the active plan is applied and detected.** After the user switches plans the effect reads the new plan, so the tweak can show System Default there; applying again covers the new plan.
+
+> ⚠️ `power_setting` and `audit_policy` cannot be **shared** settings (§9): the `shared:` block has no variant for them.
+
+> ⚠️ **No `optional`/`if_missing`.** A setting this machine does not have is a read error (Unknown), never Missing.
+
+---
+
+### 4.8 `audit_policy`: one flag of an advanced audit policy subcategory
+
+Manages **whether one outcome, success or failure, of an advanced audit policy subcategory is audited**.
+
+```yaml
+- id: logon_success
+  audit_policy: { subcategory: "{0CCE9215-69AE-11D9-BED3-505054503030}", event: success, label: "Logon" }
+- id: logon_failure
+  audit_policy: { subcategory: "{0CCE9215-69AE-11D9-BED3-505054503030}", event: failure, label: "Logon" }
+```
+
+| field         | required | meaning                                                                                         |
+| ------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `subcategory` | **yes**  | the subcategory GUID, as `auditpol /list /subcategory:* /v` prints it (same GUID rules as §4.7) |
+| `event`       | **yes**  | `success` \| `failure`                                                                          |
+| `label`       | **yes**  | display only; the details panel shows it with the event, for example "Logon (success)"          |
+
+**Value domain:** `enabled` or `disabled`.
+
+**One flag per effect.** A tweak can turn success auditing on and leave failure auditing to whoever owns it (Group Policy, another tweak); to manage both, declare two effects as above. Ownership is per flag, so two tweaks may own the success and the failure flag of one subcategory.
+
+**Runtime behavior:** `AuditQuerySystemPolicy` and `AuditSetSystemPolicy`, with `SeSecurityPrivilege` enabled around each call and disabled again after. A drive reads the subcategory, changes only its own flag and writes the result. "No auditing" is written as the API's explicit none flag, because a written 0 means "leave unchanged"; that is what lets a restored "not audited" really clear the flag.
+
+**Level:** `admin`, for reads as well as drives. Unelevated, the tweak reads Unknown with the needs-elevation hint. It has no broker operation, so routing it to `ti` is a build error (§13.7).
+
+> ⚠️ **No `optional`/`if_missing`**, as for `power_setting`.
+
+---
+
+### 4.9 `shared`: a reference to a corpus-level shared setting
 
 References a corpus-level shared setting by id. This is the **only** way two tweaks may touch one address (§9).
 
@@ -486,7 +547,7 @@ References a corpus-level shared setting by id. This is the **only** way two twe
 
 ---
 
-### 4.8 `action`: the imperative escape hatch
+### 4.10 `action`: the imperative escape hatch
 
 Runs a `cmd`/`powershell` script for changes that cannot be expressed as a declarative Setting. Full contract in §12.
 
@@ -562,6 +623,8 @@ values:
 | `task`             | `enabled` \| `disabled`                                                            |
 | `hosts`            | `present` \| `absent`                                                              |
 | `firewall`         | `present` \| `absent`                                                              |
+| `power_setting`    | `{ ac: <index>, dc: <index> }`, each 0 to 4294967295                               |
+| `audit_policy`     | `enabled` \| `disabled`                                                            |
 | `shared`           | `claim` \| `unclaimed`                                                             |
 | `action`           | `run` (or omit the entry)                                                          |
 
@@ -694,7 +757,7 @@ The three families cover differently:
 
 | effect family                                                                    | coverage requirement                                                                               |
 | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Setting** (`registry`, `registry_key`, `service`, `task`, `hosts`, `firewall`) | **must** be valued in every option                                                                 |
+| **Setting** (`registry`, `registry_key`, `service`, `task`, `hosts`, `firewall`, `power_setting`, `audit_policy`) | **must** be valued in every option                                                                 |
 | **`shared`**                                                                     | **must** be explicit `claim` or `unclaimed` in every option (omission is `SharedNotExplicit`, §16) |
 | **`action`**                                                                     | `run` **or omitted** (omitted = "this option does not run it")                                     |
 
@@ -846,7 +909,7 @@ shared:
 | field          | required | meaning                                                                                         |
 | -------------- | -------- | ----------------------------------------------------------------------------------------------- |
 | `id`           | **yes**  | unique shared id, corpus-wide (duplicate ⇒ `DuplicateSharedId`, §16)                            |
-| _one kind key_ | **yes**  | `registry`, `registry_key`, `service`, `task`, or `hosts`, **not** `firewall`, **not** `action` |
+| _one kind key_ | **yes**  | `registry`, `registry_key`, `service`, `task`, or `hosts`, **not** `firewall`, `power_setting`, `audit_policy` or `action` |
 | `value`        | **yes**  | the single target value all claiming tweaks agree on, in the kind's domain                      |
 
 Because the shared block declares the **single value**, two claiming tweaks **cannot disagree by construction.** Two tweaks wanting _different_ values on one address is impossible to express: you would have to declare two shared entries on one address, which is a duplicate-address build error naming both.
@@ -1324,6 +1387,16 @@ Note "Skip" **omits** both actions (legal, omitted actions are not run) and reli
 
 A marker like `demo_marker` works here because the action's state (the example's own `ScriptMarker`) cannot exist without this tweak. When the action changes real machine state that may already be in place (a feature already off, an app never installed, a power setting already set), prefer detecting from that state: a per-user marker makes such a machine, and every other Windows account, read System Default even though the change is in effect. Author a single option that runs the action, or anchor the second option on a Setting that is part of the same machine state (for example `HibernateEnabled` next to `powercfg /hibernate off`). Apply leaves an already-present action alone (§12.5), so a marker costs honest detection, not a wrong revert.
 
+### 12.10 Converting an action to a typed kind
+
+Snapshot entries journal an action by its effect id, and Restore runs that action's `undo` (or its `apply`, for an entry that recorded the action's undo running). If the id no longer names an action, that Restore fails and the tweak needs attention. So when a script action becomes a typed effect:
+
+- give the typed effect a **new** id;
+- keep the action under its **old** id with its `undo`, drop its `probe`, and run it from **no option**. A probe-less action no option runs is never read or applied, so only Restore reaches it;
+- keep a working `apply` only if some option ever omitted the action (Restore re-runs `apply` for such an entry); otherwise `apply: "exit 1"`.
+
+The tweak's level still covers that action, since Restore runs it. `disable_wake_timers` (`network.yaml`) and `audit_process_creation_cmdline` (`security.yaml`) show both shapes.
+
 ---
 
 ## 13. Elevation
@@ -1378,6 +1451,7 @@ Two points that matter when you author:
 
 - Per-user settings (HKCU) → `user`.
 - Machine settings requiring admin (most HKLM policy values, service start types) → `admin`.
+- A `power_setting` works at `user`; an `audit_policy` needs `admin` (§4.7, §4.8).
 - TrustedInstaller-protected resources (WaaSMedic-class keys/tasks) → `ti`.
 
 Pick the **lowest** level that actually works, but the level is **trusted, not build-validated** (the privilege a resource needs is a property of the _machine_, not the tweak). A too-low declaration surfaces at apply time as a **named insufficient-elevation error** (abort + rollback), never a silent escalation. Two distinct failures are surfaced: _couldn't acquire the level_ (environmental, TI service unstartable, `SeDebugPrivilege` denied) vs. _acquired but access-denied_ (the declaration is genuinely too low; fix it).
@@ -1398,10 +1472,9 @@ There is exactly one elevation-related build guard: **you cannot disable the `Tr
 > ⚠️ **Current limitation:** declaring `elevation: ti` (as the tweak's floor, or as a per-effect escalation, §13.2) only reaches the elevation broker for four kinds today.
 >
 > - **Routed through the broker at `ti`:** whole-value `registry` effects (no `field`), `registry_key`, `service`, `task`.
-> - **A build error at `ti`:** `action`. No broker operation carries a script, so an action whose routed level is `ti` is rejected at build time (`ActionAtTrustedInstaller`, §16), whether the `ti` comes from the tweak's floor or from the effect's own `elevation:`.
-> - **Builds clean but fails every apply at `ti`:** `hosts`, `firewall`, and a `field`-addressed `registry` effect (§11), with an unsupported-elevation-level error, because `engine::AllKinds::drive` has no broker translation for them yet.
+> - **A build error at `ti`:** `action`, `hosts`, `firewall`, `power_setting`, `audit_policy`, and an HKLM `field`-addressed `registry` effect (§11), whether reached directly or through a `shared:` reference. No broker operation carries them, so such an effect whose routed level is `ti` is rejected at build time (`UnbrokeredAtTrustedInstaller`, §16), whether the `ti` comes from the tweak's floor or from the effect's own `elevation:`. An HKCU address is exempt: it always runs as the user (§13.3).
 >
-> Since per-effect elevation only ever escalates (§13.2, never lowers below the tweak's floor), any of these kinds inside a `ti`-floor tweak inherits `ti` too. Keep them, and every `action`, inside tweaks whose effective level never rises above `admin`.
+> Since per-effect elevation only ever escalates (§13.2, never lowers below the tweak's floor), any of these kinds inside a `ti`-floor tweak inherits `ti` too. Keep them inside tweaks whose effective level never rises above `admin`.
 
 ### 13.8 Declaration order decides how many elevated children you pay for
 
@@ -1421,7 +1494,7 @@ This never reorders anything. Declaration order remains load-bearing and is pres
 
 A tweak is **reversible** if and only if **every** effect on its surface is one of:
 
-- a **Setting** (registry, registry_key, service, task, hosts, firewall), reversible by construction, or
+- a **Setting** (registry, registry_key, service, task, hosts, firewall, power_setting, audit_policy), reversible by construction, or
 - a **`shared`** reference, reversible via the claim/release lifecycle (§9), or
 - an **Action with `undo`**, reverts cleanly, or
 - an **`ephemeral` Action**, exempt (transient, nothing to revert).
@@ -1568,6 +1641,7 @@ The wrapped parse error is one of (spec §5.1):
 - `registry path "…" contains an empty segment: check for a doubled backslash`
 - `registry path "…" does not start with a supported hive: use HKLM or HKCU (short or long spelling)`
 - `` `format` only applies with `field`: add the `field` it packs, or drop `format` ``
+- `"…" is not a GUID: write it as xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, braces optional` (a `power_setting` or `audit_policy` GUID)
 
 **Why:** exact, well-formed addresses are what the ownership guard and snapshot keys depend on; a trailing backslash was historically a real delete-the-wrong-thing hazard.
 
@@ -1685,11 +1759,11 @@ Addresses compare the way Windows does: registry paths and value names, service 
 
 #### 10. `NonCanonicalKind`: a raw registry effect reaching a service/task's storage
 
-> **Message:** ``{owner} addresses {path} as a raw registry value: use the `{Service|Task}` kind instead``
+> **Message:** ``{owner} addresses {path} as a raw registry value: use the `{service|task|power_setting}` kind instead``
 
 `{owner}` is ``tweak `T` effect `E` `` or ``shared `S` ``.
 
-**Trigger:** an HKLM `registry` effect or `shared:` entry whose value is a service's `…\Services\<name>\Start` or `…\Services\<name>\DelayedAutostart`, or whose key is under the Task Scheduler storage tree (`…\Schedule\TaskCache\…`). **Why:** those states have canonical kinds; reaching them raw would let ownership be dodged via a second address space (ADR-0006).
+**Trigger:** an HKLM `registry` effect or `shared:` entry whose value is a service's `…\Services\<name>\Start` or `…\Services\<name>\DelayedAutostart`, or whose key is under the Task Scheduler storage tree (`…\Schedule\TaskCache\…`) or the power schemes' storage (`SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes\…`). **Why:** those states have canonical kinds; reaching them raw would let ownership be dodged via a second address space (ADR-0006).
 
 ```yaml
 # ❌
@@ -1770,11 +1844,11 @@ action: { apply: "ipconfig /flushdns", ephemeral: true, probe: "…", shell: cmd
 action: { apply: "ipconfig /flushdns", ephemeral: true, shell: cmd }
 ```
 
-#### 17. `ActionAtTrustedInstaller`: an action routed to `ti`
+#### 17. `UnbrokeredAtTrustedInstaller`: an effect no broker op carries, routed to `ti`
 
-> **Message:** ``tweak `T` effect `E` is an action routed to TrustedInstaller, from {the tweak's `elevation: ti` floor | the effect's own `elevation: ti`}: a script cannot run at `ti` (no broker op carries one), so lower the level or express the change as a typed effect``
+> **Message:** ``tweak `T` effect `E` is a `{kind}` effect routed to TrustedInstaller, from {the tweak's `elevation: ti` floor | the effect's own `elevation: ti`}: no broker op carries it, so lower the level or express the change as a kind that runs at `ti` ``
 
-**Trigger:** an `action` effect whose effective level (§13.2) is `ti`, from either source. **Why:** no broker operation carries a script, so apply and every undo would fail at runtime (§13.7, ADR-0005).
+**Trigger:** an `action`, `hosts`, `firewall`, `power_setting`, `audit_policy` or HKLM field-addressed `registry` effect (directly or through `shared:`) whose effective level (§13.2) is `ti`, from either source. **Why:** no broker operation carries it, so apply and every undo would fail at runtime (§13.7, ADR-0005).
 
 ```yaml
 # ❌ a ti floor reaches the action too

@@ -2,7 +2,7 @@ import type { ColumnTone, IconName } from "$lib/design";
 import type { EffectAgreement, RegistryChange, RegistryValueType, TweakEffectOption } from "$lib/types";
 import { capitalize } from "$lib/utils/format";
 
-export type ChangeKind = "registry" | "service" | "task" | "hosts" | "firewall";
+export type ChangeKind = "registry" | "service" | "task" | "hosts" | "firewall" | "power" | "audit";
 
 export const KIND_META: Record<ChangeKind, { label: string; icon: IconName }> = {
   registry: { label: "Registry", icon: "mdi:database" },
@@ -10,6 +10,8 @@ export const KIND_META: Record<ChangeKind, { label: string; icon: IconName }> = 
   task: { label: "Scheduled tasks", icon: "mdi:calendar" },
   hosts: { label: "Hosts file", icon: "mdi:file-document-outline" },
   firewall: { label: "Firewall", icon: "mdi:shield-outline" },
+  power: { label: "Power plan", icon: "mdi:power-plug-outline" },
+  audit: { label: "Audit policy", icon: "mdi:file-search-outline" },
 };
 
 export function optionTone(label: string, activeOption: string | null, pendingLabel?: string): ColumnTone | null {
@@ -116,10 +118,20 @@ function matrixEntries(o: TweakEffectOption): MatrixEntry[] {
           ? { text: "Removed", removal: true }
           : { text: `${humanize(c.action)} ${c.direction}` },
     })),
+    ...o.power_changes.map((c) => ({
+      key: `power:${c.subgroup}/${c.setting}`,
+      row: { kind: "power" as const, title: c.name, name: c.name, location: "Active power plan" },
+      cell: { text: `Plugged in ${c.ac}, on battery ${c.dc}` },
+    })),
+    ...o.audit_changes.map((c) => ({
+      key: `audit:${c.subcategory}:${c.event}`,
+      row: { kind: "audit" as const, title: c.name, name: c.name, location: "Advanced audit policy" },
+      cell: { text: c.audited ? "Audited" : "Not audited" },
+    })),
   ];
 }
 
-const KIND_ORDER: ChangeKind[] = ["registry", "service", "task", "hosts", "firewall"];
+const KIND_ORDER: ChangeKind[] = ["registry", "service", "task", "hosts", "firewall", "power", "audit"];
 
 /** One row per setting any option touches, so options compare side by side. */
 export function buildMatrix(options: TweakEffectOption[], observed: TweakEffectOption | null): MatrixRow[] {
