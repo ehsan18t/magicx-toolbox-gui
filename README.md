@@ -30,11 +30,24 @@ MagicX Toolbox is a modern, safe, and easy-to-use application designed to help y
   - **Risk Levels**: Every tweak is clearly labeled (Safe, Moderate, Advanced) so you know exactly what you're doing.
 - **ℹ️ System Information**: Get a detailed overview of your hardware and software specifications.
 - **🧹 Bloatware Removal**: Clean up pre-installed junk apps that slow down your computer.
-- **Portable**: No installation required. Just extract the files and run the .exe file.
+- **Portable**: No installation required. Download one .exe file and run it.
 
 ## Download
 
-1. **Download**: Go to the [Releases Page](https://github.com/ehsan18t/magicx-toolbox-gui/releases/latest) and download the latest .exe file.
+MagicX Toolbox ships as a single portable file, `magicx-toolbox.exe`. There is no installer.
+
+1. **Download**: Go to the [Releases Page](https://github.com/ehsan18t/magicx-toolbox-gui/releases/latest) and download `magicx-toolbox.exe`.
+2. **Pick a folder**: Put it in a folder you can write to, such as one under your user folder or on a USB drive, and run it from there. Avoid `Program Files`: the app keeps its snapshots next to the exe and cannot save them there.
+
+### Where your snapshots live
+
+Before every change the app saves a snapshot in a `snapshots` folder next to `magicx-toolbox.exe`. That folder is your undo history. Keep it with the exe: if you move the app, move the folder with it, and do not delete it while any tweak is applied. Logs and settings are kept separately under `%LOCALAPPDATA%\me.ehsankhan.magicx-toolbox`.
+
+### Updating
+
+Open **Updates** in the app to check for a new version. **Install update** downloads the new `magicx-toolbox.exe`, checks it against the SHA-256 checksum GitHub publishes for the release, replaces the running exe in the same folder and restarts the app. Your `snapshots` folder stays where it is, so your undo history carries over. The replaced version is kept as `magicx-toolbox.exe.old` until the next start, then deleted.
+
+If the app cannot write to its own folder (for example a copy in `Program Files` or on read-only media), it says so and links to the releases page: download the new `magicx-toolbox.exe` and replace the old one yourself, keeping the `snapshots` folder beside it.
 
 ## How to Use
 

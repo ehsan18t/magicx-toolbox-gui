@@ -6,8 +6,6 @@
 
 use super::broker::AcquireReason;
 use crate::error::Error;
-use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
 use std::ptr;
 
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE, HANDLE, LUID};
@@ -41,14 +39,6 @@ pub(super) enum SpawnError {
     NoChild(AcquireReason, Error),
     /// A child was created, so ops may have run.
     ChildRan(Error),
-}
-
-/// Convert a Rust string to a null-terminated wide string.
-pub(super) fn to_wide_string(s: &str) -> Vec<u16> {
-    OsStr::new(s)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect()
 }
 
 /// A hidden-window `STARTUPINFOW`, the shape both spawn paths want.
@@ -125,7 +115,7 @@ fn adjust_debug_privilege(enable: bool) -> Result<bool, SpawnError> {
             return Err(spawn_failed(win_err("OpenProcessToken")));
         }
 
-        let privilege_name = to_wide_string("SeDebugPrivilege");
+        let privilege_name = crate::services::wide("SeDebugPrivilege");
         let mut luid: LUID = std::mem::zeroed();
         if LookupPrivilegeValueW(ptr::null(), privilege_name.as_ptr(), &mut luid) == FALSE {
             return Err(spawn_failed(close_then(

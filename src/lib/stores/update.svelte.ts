@@ -1,11 +1,8 @@
-import { exitApp } from "$lib/api/platform";
 import * as updateApi from "$lib/api/update";
-import { APP_CONFIG } from "$lib/config/app";
 import type { DownloadProgress, UpdateInfo } from "$lib/types";
-import { errorMessage, isAppExiting } from "$lib/utils/error";
+import { errorMessage, isAppExiting, isUpdateFolderReadOnly } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { HOUR_MS } from "$lib/utils/time";
-import { modalStore } from "./modal.svelte";
 import { settingsStore } from "./settings.svelte";
 import { toastStore } from "./toast.svelte";
 
@@ -13,14 +10,18 @@ const UPDATE_CHECK_HOURS = 1;
 const UPDATE_CHECK_INTERVAL_MS = UPDATE_CHECK_HOURS * HOUR_MS;
 /** How often the background check may run, as the setting describes it. */
 export const UPDATE_CHECK_CADENCE = UPDATE_CHECK_HOURS > 1 ? `once every ${UPDATE_CHECK_HOURS} hours` : "once an hour";
-// Lets the installer start before the app exits.
-const EXIT_AFTER_INSTALL_MS = 1000;
 
 let isChecking = $state(false);
 let isInstalling = $state(false);
 let downloadProgress = $state<DownloadProgress | null>(null);
 let updateInfo = $state<UpdateInfo | null>(null);
 let lastError = $state<string | null>(null);
+let manualDownloadOnly = $state(false);
+
+function setError(message: string | null, manualDownload = false): void {
+  lastError = message;
+  manualDownloadOnly = manualDownload;
+}
 
 const isAvailable = $derived(updateInfo?.available ?? false);
 
@@ -35,40 +36,37 @@ function stampLastCheck(): void {
 async function checkForUpdate(silent = false): Promise<UpdateInfo | null> {
   const seq = ++checkSeq;
   isChecking = true;
-  if (!silent) lastError = null;
+  if (!silent) setError(null);
 
   try {
-    const { source, flags } = APP_CONFIG.update.assetPattern;
     const result = await updateApi.checkForUpdate({
-      releasesApiUrl: APP_CONFIG.update.releasesApiUrl,
-      // `source` drops the flags; regex_lite reads case-insensitivity inline.
-      assetPattern: (flags.includes("i") ? "(?i)" : "") + source,
       includePrereleases: settingsStore.includePrereleases,
     });
     stampLastCheck();
     if (seq === checkSeq) {
       updateInfo = result;
-      lastError = null;
+      setError(null);
     }
     return result;
   } catch (error) {
     logError("Update check failed", error);
-    if (!silent && seq === checkSeq) lastError = errorMessage(error);
+    if (!silent && seq === checkSeq) setError(errorMessage(error));
     return null;
   } finally {
     if (seq === checkSeq) isChecking = false;
   }
 }
 
-async function installUpdate(): Promise<boolean> {
-  if (isInstalling) return false;
+/** On success the backend has started the new version and exits this one. */
+async function installUpdate(): Promise<void> {
+  if (isInstalling) return;
   if (!updateInfo?.available || !updateInfo.downloadUrl || !updateInfo.assetName) {
-    lastError = "No update available to install";
-    return false;
+    setError("No update available to install");
+    return;
   }
 
   isInstalling = true;
-  lastError = null;
+  setError(null);
   downloadProgress = null;
   try {
     await updateApi.installUpdate(
@@ -78,13 +76,11 @@ async function installUpdate(): Promise<boolean> {
       updateInfo.assetSize ?? null,
       (progress) => (downloadProgress = progress),
     );
-    return true;
   } catch (error) {
     logError("Update installation failed", error);
     const message = errorMessage(error);
     if (isAppExiting(error)) toastStore.warning(message);
-    else lastError = message;
-    return false;
+    else setError(message, isUpdateFolderReadOnly(error));
   } finally {
     isInstalling = false;
     downloadProgress = null;
@@ -112,6 +108,11 @@ export const updateStore = {
     return lastError;
   },
 
+  /** The last install failed because this copy cannot replace itself. */
+  get manualDownloadOnly() {
+    return manualDownloadOnly;
+  },
+
   get isAvailable() {
     return isAvailable;
   },
@@ -128,22 +129,9 @@ export const updateStore = {
     if (due && !isChecking) void checkForUpdate(true);
   },
 
-  /** Installs, then exits so the installer can replace the app. */
-  async installAndExit(): Promise<void> {
-    if (!(await installUpdate())) return;
-    await new Promise((resolve) => setTimeout(resolve, EXIT_AFTER_INSTALL_MS));
-    try {
-      await exitApp();
-    } catch {
-      // The installer is already running, and the backend keeps refusing applies until exit.
-      modalStore.close();
-      toastStore.warning(
-        "The installer is running, but the app could not close itself. Close the app to finish the update.",
-      );
-    }
-  },
+  installUpdate,
 
   clearError() {
-    lastError = null;
+    setError(null);
   },
 };

@@ -10,8 +10,9 @@ import { tweaksStore } from "./tweaksData.svelte";
 let error = $state<string | null>(null);
 let started = false;
 
+/** The first failure is the one shown. */
 function fail(context: string, cause: unknown) {
-  error = errorMessage(cause);
+  error ??= errorMessage(cause);
   logError(context, cause);
 }
 
@@ -21,11 +22,15 @@ export const bootStore = {
     return error;
   },
 
-  /** Run once by the layout: the tweak model, then system info, elevation, app presence and the status stream. */
+  /** Run once by App.svelte: the tweak model alongside the status stream, system info and elevation, then app presence. */
   async load(onModelSettled: () => void): Promise<void> {
     if (started) return;
     started = true;
     void manualTestsStore.load();
+    // Started before the model: statuses that arrive first wait in tweaksData's pending buffer.
+    const rest = Promise.all([tweaksStore.streamStatuses(), systemStore.load(), elevationStore.load()]).catch(
+      (cause: unknown) => fail("Failed to initialize", cause),
+    );
     try {
       await tweaksStore.load();
     } catch (cause) {
@@ -36,11 +41,7 @@ export const bootStore = {
     }
     // Not awaited: the app presence scan is slow and must not hold up the tweak UI.
     void appsStore.load();
-    try {
-      await Promise.all([systemStore.load(), elevationStore.load(), tweaksStore.streamStatuses()]);
-    } catch (cause) {
-      fail("Failed to initialize", cause);
-    }
+    await rest;
   },
 
   /** Re-runs the full scan after an elevation change so Unknowns become readable. */

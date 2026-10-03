@@ -6,7 +6,7 @@ use tauri::plugin::TauriPlugin;
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
-// Not VISIBLE: the window starts hidden and `show_main_window` or the watchdog shows it.
+// Not VISIBLE: the window starts hidden and shows when its page loads (main_window.rs).
 const FLAGS: StateFlags = StateFlags::SIZE
     .union(StateFlags::POSITION)
     .union(StateFlags::MAXIMIZED);
@@ -19,8 +19,7 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
         .build()
 }
 
-/// Before a relaunch: the new instance reads the state before this one exits and the plugin saves
-/// (and an installer may close this one with no Tauri exit at all).
+/// Before a relaunch: the new instance reads the state before this one exits and the plugin saves.
 pub fn save(app: &AppHandle) {
     // On the main thread: the plugin holds its cache lock across window getters, which off it wait on
     // the main thread, whose Moved/Resized handler waits on that lock. From the main thread it runs inline.

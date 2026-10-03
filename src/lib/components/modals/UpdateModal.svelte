@@ -15,6 +15,7 @@
     Switch,
     WIDE_DIALOG_INSET,
   } from "$lib/components/ui";
+  import { APP_CONFIG } from "$lib/config/app";
   import { HEADING } from "$lib/design";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
@@ -93,12 +94,12 @@
               variant="primary"
               icon="mdi:download"
               loading={isInstalling}
-              onclick={() => updateStore.installAndExit()}
+              onclick={() => updateStore.installUpdate()}
             >
               {isInstalling ? "Downloading…" : "Install update"}
             </Button>
           {:else}
-            <span class="text-ui text-foreground-muted">No installer for this PC in the release.</span>
+            <span class="text-ui text-foreground-muted">This release has no portable exe to update from.</span>
           {/if}
           {#if updateInfo.downloadUrl}
             <ExternalLink href={updateInfo.downloadUrl} variant="underline" class="text-ui"
@@ -140,7 +141,14 @@
 
       {#if error}
         <Callout tone="error" icon="mdi:alert-circle" class="mt-4 animate-fade-in text-ui">
-          <span class="min-w-0 flex-1">{error}</span>
+          <span class="min-w-0 flex-1">
+            {error}
+            {#if updateStore.manualDownloadOnly}
+              <ExternalLink href="{APP_CONFIG.githubRepo}/releases" variant="underline"
+                >Open the releases page</ExternalLink
+              >
+            {/if}
+          </span>
           <LinkButton tone="muted" class="shrink-0 text-xs" onclick={() => updateStore.clearError()}>
             Dismiss
           </LinkButton>

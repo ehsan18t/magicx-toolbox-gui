@@ -4,6 +4,8 @@
 //! the one seam that touches the OS (the SID lookups) sits behind an injectable [`SidProbe`], so
 //! everything else here runs with zero OS contact by default.
 
+use std::sync::OnceLock;
+
 use crate::tweaks::kinds::ExecCx;
 use crate::tweaks::model::{
     ActionDef, Corpus, Effect, EffectDef, Hive, Level, Probe, Setting, Tweak,
@@ -209,12 +211,17 @@ pub fn hkcu_disabled_by_sid_mismatch(touches_hkcu: bool, check: SidCheck) -> boo
 /// `LookupAccountNameW` for the session-owner side.
 pub struct RealSidProbe;
 
+// Cached per process, failures too: neither the token user nor the session owner changes while it
+// runs (elevating relaunches; the broker is its own process), and a lookup that stalled on an
+// unreachable DC would stall every later check.
 impl SidProbe for RealSidProbe {
     fn process_token_sid(&self) -> Option<String> {
-        windows_impl::process_token_sid()
+        static SID: OnceLock<Option<String>> = OnceLock::new();
+        SID.get_or_init(windows_impl::process_token_sid).clone()
     }
     fn session_user_sid(&self) -> Option<String> {
-        windows_impl::session_user_sid()
+        static SID: OnceLock<Option<String>> = OnceLock::new();
+        SID.get_or_init(windows_impl::session_user_sid).clone()
     }
     fn process_account_name(&self) -> Option<String> {
         windows_impl::process_account_name()

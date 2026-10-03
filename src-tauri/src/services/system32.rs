@@ -18,7 +18,6 @@ pub enum SystemTool {
     Cmd,
     PowerShell,
     Netsh,
-    Msiexec,
 }
 
 impl SystemTool {
@@ -27,7 +26,6 @@ impl SystemTool {
             Self::Cmd => "cmd.exe",
             Self::PowerShell => r"WindowsPowerShell\v1.0\powershell.exe",
             Self::Netsh => "netsh.exe",
-            Self::Msiexec => "msiexec.exe",
         }
     }
 
@@ -69,18 +67,12 @@ mod tests {
             .join("System32")
             .to_string_lossy()
             .to_lowercase();
-        for tool in [
-            SystemTool::Cmd,
-            SystemTool::PowerShell,
-            SystemTool::Netsh,
-            SystemTool::Msiexec,
-        ] {
+        for tool in [SystemTool::Cmd, SystemTool::PowerShell, SystemTool::Netsh] {
             // Exhaustive: a new tool does not compile until its expected path is listed here.
             let expected = match tool {
                 SystemTool::Cmd => "cmd.exe",
                 SystemTool::PowerShell => r"windowspowershell\v1.0\powershell.exe",
                 SystemTool::Netsh => "netsh.exe",
-                SystemTool::Msiexec => "msiexec.exe",
             };
             let cmd = tool.command().expect("the system directory must resolve");
             let program = Path::new(cmd.get_program());

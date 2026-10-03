@@ -1,8 +1,7 @@
-// The Tauri plugin calls the stores make: opener, dialog, path and process.
+// The Tauri plugin calls the stores make: opener, dialog and path.
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { open, save, type DialogFilter } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { exit } from "@tauri-apps/plugin-process";
 
 export async function openExternalUrl(url: string): Promise<void> {
   await openUrl(url);
@@ -31,8 +30,4 @@ export async function appDataPath(...parts: string[]): Promise<string> {
 
 export async function joinPath(...parts: string[]): Promise<string> {
   return await join(...parts);
-}
-
-export async function exitApp(code = 0): Promise<void> {
-  await exit(code);
 }

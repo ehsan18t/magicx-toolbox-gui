@@ -1,22 +1,12 @@
-//! Build script for the redesigned tweak engine (spec §11/§12). Loads and validates the YAML
-//! corpus under `tweaks/` at compile time and embeds the result — the hard cutover's replacement
-//! for the old option-centric schema/validation codegen this file used to hold.
+//! Loads and validates the YAML corpus under `tweaks/` at compile time and embeds the result.
 //!
-//! `#[path]`-includes the runtime's own `model.rs`/`parse.rs`/`validate.rs`/`schema.rs` verbatim
-//! (Task 3's carry-forward, continuing the technique the old `models/tweak_schema.rs` shim used):
-//! build.rs and the `app_lib` crate compile the identical source twice, as two separate crate
-//! compilations connected only by the JSON this script embeds below — a renamed field or a changed
-//! validation rule is a compile error on *both* sides, never silent drift. `schema.rs` is the one
-//! file with no other caller in a shipped binary (`tweaks/mod.rs` gates it `#[cfg(test)]` so
-//! `serde_yaml_bw` never links into the app); this is its other, non-test caller.
+//! `#[path]`-includes the runtime's own `model.rs`/`parse.rs`/`validate.rs`/`schema.rs`, so a
+//! renamed field or a changed validation rule is a compile error on both sides, never drift.
+//! `schema.rs` is `#[cfg(test)]` in the app, so `serde_yaml_bw` never links into it.
 
 use std::path::Path;
 
-// `#[allow(dead_code)]`: build.rs's own compilation only ever reaches `load_corpus` +
-// `validate_structural` + `validate_semantic` — a narrower call graph than the full runtime crate
-// (which also links `kinds`/`engine`, exercising the rest of `parse`/`validate`'s public surface).
-// The same source, included normally (`pub mod parse;` etc.) in `tweaks/mod.rs`, still gets full
-// dead-code scrutiny there; this allow is scoped to this reduced, throwaway compilation only.
+// This build reaches only the corpus load and validation; the app crate checks the rest.
 #[path = "src/tweaks/model.rs"]
 #[allow(dead_code)]
 mod model;
@@ -29,8 +19,45 @@ mod schema;
 #[allow(dead_code)]
 mod validate;
 
+/// tauri-build's default manifest declares only Common Controls v6, which the dialog plugin needs.
+/// The DPI awareness matches what tao requests at runtime, so the manifest settles it before any
+/// window (or a startup failure's message box) exists.
+const APP_MANIFEST: &str = r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0"
+        processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*" />
+    </dependentAssembly>
+  </dependency>
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>
+"#;
+
 fn main() {
-    tauri_build::build();
+    let windows = tauri_build::WindowsAttributes::new().app_manifest(APP_MANIFEST);
+    if let Err(e) =
+        tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows))
+    {
+        panic!("{e:#}");
+    }
 
     if let Err(e) = generate_corpus() {
         panic!("{e}");
@@ -45,10 +72,7 @@ fn generate_corpus() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = std::env::var("OUT_DIR")?;
     let out_path = Path::new(&out_dir);
 
-    // Emitting even one `rerun-if-changed` line switches Cargo off its whole-package-scan default
-    // (see the Cargo book), so every input this script actually reads must be listed explicitly —
-    // the corpus directory AND the four #[path]-included source files above, whose own edits must
-    // re-trigger validation exactly as a YAML edit does.
+    // One `rerun-if-changed` line turns off Cargo's whole-package scan, so every input is listed.
     println!("cargo:rerun-if-changed=tweaks/");
     println!("cargo:rerun-if-changed=src/tweaks/model.rs");
     println!("cargo:rerun-if-changed=src/tweaks/parse.rs");
@@ -115,8 +139,7 @@ pub static APPS: LazyLock<Vec<AppDef>> = LazyLock::new(|| {
     Ok(())
 }
 
-/// One framed report naming every problem in a single build failure — an author sees everything
-/// wrong in one run, matching the box-drawing shape the old build.rs's own reports used.
+/// Every problem in one framed report, so an author sees them all in one run.
 fn validation_report<E: std::fmt::Display>(title: &str, errors: &[E]) -> String {
     let mut report =
         String::from("\n╔══════════════════════════════════════════════════════════════╗\n");

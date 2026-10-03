@@ -154,13 +154,27 @@ pub struct HardwareInfo {
     pub total_storage_gb: f64,
 }
 
+/// Read on every call, without WMI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
-pub struct SystemInfo {
+pub struct LiveSystemInfo {
     pub windows: WindowsInfo,
     pub computer_name: String,
     pub username: String,
     pub is_admin: bool,
+}
+
+/// The WMI-read part: slow, so the frontend shows its cached copy while it rereads.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct MachineHardware {
     pub hardware: HardwareInfo,
     pub device: DeviceInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+pub struct SystemReading {
+    pub live: LiveSystemInfo,
+    pub machine: Option<MachineHardware>,
 }

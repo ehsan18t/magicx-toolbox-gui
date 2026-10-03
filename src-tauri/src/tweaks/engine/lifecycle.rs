@@ -5,7 +5,8 @@
 //! [`scan_for_crash_residue`] flags the open drive, unfinished steps and outstanding rows a crash
 //! left.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
@@ -45,6 +46,8 @@ enum Exit {
 struct GateState {
     locks: HashMap<String, Arc<AsyncMutex<()>>>,
     exit: Exit,
+    /// Tweaks whose startup crash-residue scan failed, with the error.
+    unscanned: BTreeMap<String, String>,
 }
 
 impl GateState {
@@ -62,34 +65,131 @@ impl GateState {
 }
 
 #[derive(Default)]
-pub struct ApplyGate(Mutex<GateState>);
+pub struct ApplyGate {
+    state: Mutex<GateState>,
+    /// Live [`TweakGuard`]s. Not `any_locked`: its probing `try_lock` would itself read as busy.
+    held: Arc<AtomicUsize>,
+}
 
 static GATE: OnceLock<ApplyGate> = OnceLock::new();
+static BUSY_LISTENER: OnceLock<fn()> = OnceLock::new();
 
 pub fn gate() -> &'static ApplyGate {
     GATE.get_or_init(ApplyGate::default)
 }
 
+/// Called after a tweak lock is taken or released; it reads [`ApplyGate::busy`] itself.
+pub fn on_busy_change(listener: fn()) {
+    if BUSY_LISTENER.set(listener).is_err() {
+        log::warn!("a busy listener is already registered");
+    }
+}
+
+fn notify_busy() {
+    if let Some(listener) = BUSY_LISTENER.get() {
+        listener();
+    }
+}
+
+/// One tweak's lock; the busy listener hears it taken and released.
+pub struct TweakGuard {
+    lock: Option<OwnedMutexGuard<()>>,
+    held: Arc<AtomicUsize>,
+}
+
+impl TweakGuard {
+    fn new(lock: OwnedMutexGuard<()>, held: &Arc<AtomicUsize>) -> Self {
+        held.fetch_add(1, Ordering::SeqCst);
+        notify_busy();
+        Self {
+            lock: Some(lock),
+            held: Arc::clone(held),
+        }
+    }
+}
+
+impl Drop for TweakGuard {
+    fn drop(&mut self) {
+        drop(self.lock.take());
+        self.held.fetch_sub(1, Ordering::SeqCst);
+        notify_busy();
+    }
+}
+
 impl ApplyGate {
     fn state(&self) -> MutexGuard<'_, GateState> {
-        self.0.lock().expect("tweak-locks mutex poisoned")
+        self.state.lock().expect("tweak-locks mutex poisoned")
     }
 
-    /// Serializes one tweak's whole apply/restore (spec §8.7); other tweaks proceed concurrently.
-    pub async fn lock_tweak(&self, tweak_id: &str) -> Result<OwnedMutexGuard<()>, AppExiting> {
-        let arc = self
-            .state()
+    fn tweak_lock(&self, tweak_id: &str) -> Arc<AsyncMutex<()>> {
+        self.state()
             .locks
             .entry(tweak_id.to_string())
             .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-            .clone();
-        let guard = arc.lock_owned().await;
+            .clone()
+    }
+
+    /// Serializes one tweak's whole apply/restore (spec §8.7); other tweaks proceed concurrently.
+    pub async fn lock_tweak(&self, tweak_id: &str) -> Result<TweakGuard, AppExiting> {
+        let guard = TweakGuard::new(self.tweak_lock(tweak_id).lock_owned().await, &self.held);
         // Checked while holding the lock, under the mutex `begin_exit` takes: either this sees the
         // latch or the exit sees this lock held. Checking before the await leaves a gap (stability).
         if let Some(refused) = self.state().refusal() {
             return Err(refused);
         }
         Ok(guard)
+    }
+
+    /// Whether any tweak or app lock is held.
+    pub fn busy(&self) -> bool {
+        self.held.load(Ordering::SeqCst) > 0
+    }
+
+    /// The startup carry-forward for one tweak (spec §8.1, invariant 5). A scan that cannot finish
+    /// is kept, so the tweak shows Needs Attention rather than healthy (ADR-0001).
+    pub(crate) fn scan_residue(
+        &self,
+        snapshots: &SnapshotStore,
+        tweak_id: &str,
+        guid: Option<&str>,
+    ) {
+        if let Err(e) = try_record_crash_residue(snapshots, tweak_id, guid) {
+            log::error!("tweak '{tweak_id}': could not record its crash residue: {e}");
+            self.state()
+                .unscanned
+                .insert(tweak_id.to_string(), e.to_string());
+        }
+    }
+
+    /// A failed startup scan as a Needs Attention item, retried first. Only while nothing holds the
+    /// tweak's lock: an apply's open drive mark would read as a crash.
+    pub(crate) fn unscanned_residue(
+        &self,
+        snapshots: &SnapshotStore,
+        tweak_id: &str,
+        guid: Option<&str>,
+    ) -> Option<AttentionItem> {
+        let mut why = self.state().unscanned.get(tweak_id)?.clone();
+        if let Ok(lock) = self.tweak_lock(tweak_id).try_lock_owned() {
+            let _held = TweakGuard::new(lock, &self.held);
+            match try_record_crash_residue(snapshots, tweak_id, guid) {
+                Ok(()) => {
+                    self.state().unscanned.remove(tweak_id);
+                    return None;
+                }
+                Err(e) => why = e.to_string(),
+            }
+        }
+        Some(AttentionItem {
+            effect: None,
+            kind: AttentionKind::Store,
+            class: None,
+            entries: Default::default(),
+            message: format!(
+                "the startup check for a change a crash interrupted could not finish ({why}), so \
+                 this tweak may be only partly changed"
+            ),
+        })
     }
 
     /// Starts a pending exit: every later [`Self::lock_tweak`] is refused until the latch drops or
@@ -118,7 +218,7 @@ impl ApplyGate {
     }
 }
 
-pub(crate) async fn lock_tweak(tweak_id: &str) -> Result<OwnedMutexGuard<()>, AppExiting> {
+pub(crate) async fn lock_tweak(tweak_id: &str) -> Result<TweakGuard, AppExiting> {
     gate().lock_tweak(tweak_id).await
 }
 
@@ -210,9 +310,23 @@ pub fn scan_for_crash_residue(entries: &[Entry]) -> Option<Attention> {
 /// UI like any other kept failure (ADR-0001) instead of living only in the log. An existing record
 /// of this build's gains the items it lacks, so a crash during a retry is not hidden behind it.
 pub(crate) fn record_crash_residue(snapshots: &SnapshotStore, tweak_id: &str, guid: Option<&str>) {
-    if let Err(e) = try_record_crash_residue(snapshots, tweak_id, guid) {
-        log::error!("tweak '{tweak_id}': could not record its crash residue: {e}");
-    }
+    gate().scan_residue(snapshots, tweak_id, guid);
+}
+
+/// `recorded` plus [`ApplyGate::unscanned_residue`]'s item; alone, it reads as crash residue.
+pub(crate) fn with_unscanned(
+    recorded: Option<Attention>,
+    unscanned: Option<AttentionItem>,
+) -> Option<Attention> {
+    let Some(item) = unscanned else {
+        return recorded;
+    };
+    let mut attention = recorded.unwrap_or(Attention {
+        reason: AttentionReason::CrashResidue,
+        items: Vec::new(),
+    });
+    attention.items.push(item);
+    Some(attention)
 }
 
 /// [`record_crash_residue`] for a caller that must report a store failure, not only log it.
@@ -683,5 +797,68 @@ mod tests {
         );
         drop(pending);
         assert_eq!(gate.lock_tweak("t").await.err(), Some(AppExiting::Final));
+    }
+
+    #[tokio::test]
+    async fn busy_follows_the_tweak_locks() {
+        let gate = ApplyGate::default();
+        assert!(!gate.busy());
+        let guard = gate.lock_tweak("t").await.expect("no exit pending");
+        assert!(gate.busy());
+        drop(guard);
+        assert!(!gate.busy());
+        let _latch = gate.begin_exit().expect("nothing locked");
+        assert!(gate.lock_tweak("t").await.is_err());
+        assert!(!gate.busy(), "a refused lock is released, not left counted");
+    }
+
+    /// A store failure at startup must not leave a crashed tweak looking healthy (ADR-0001): it
+    /// stays flagged until a retry, never run under an apply's lock, records the residue.
+    #[tokio::test]
+    async fn a_failed_startup_scan_shows_until_a_retry_records_the_residue() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = crashed_store(tmp.path());
+        let blocker = tmp.path().join("demo").join("_attention.json");
+        std::fs::create_dir(&blocker).unwrap();
+        let gate = ApplyGate::default();
+
+        gate.scan_residue(&store, "demo", Some("g"));
+        let item = gate
+            .unscanned_residue(&store, "demo", Some("g"))
+            .expect("still unscanned");
+        assert_eq!(item.kind, AttentionKind::Store);
+        let shown = with_unscanned(None, Some(item)).expect("surfaces alone");
+        assert_eq!(shown.reason, AttentionReason::CrashResidue);
+
+        std::fs::remove_dir(&blocker).unwrap();
+        let held = gate.lock_tweak("demo").await.expect("no exit pending");
+        assert!(gate.unscanned_residue(&store, "demo", Some("g")).is_some());
+        assert_eq!(store.attention("demo", Some("g")).unwrap(), None);
+        drop(held);
+
+        assert!(gate.unscanned_residue(&store, "demo", Some("g")).is_none());
+        assert!(!gate.busy(), "the retry's lock is released");
+        let recorded = store.attention("demo", Some("g")).unwrap().unwrap();
+        assert_eq!(recorded.reason, AttentionReason::CrashResidue);
+        assert!(gate.unscanned_residue(&store, "demo", Some("g")).is_none());
+    }
+
+    #[test]
+    fn an_unscanned_item_joins_a_recorded_failure() {
+        let item = AttentionItem {
+            effect: None,
+            kind: AttentionKind::Store,
+            class: None,
+            entries: Default::default(),
+            message: "scan failed".into(),
+        };
+        let joined = with_unscanned(Some(apply_failed()), Some(item.clone())).unwrap();
+        assert_eq!(joined.reason, AttentionReason::ApplyFailed);
+        assert_eq!(joined.items.last(), Some(&item));
+        assert_eq!(
+            with_unscanned(Some(apply_failed()), None),
+            Some(apply_failed())
+        );
+        assert_eq!(with_unscanned(None, None), None);
     }
 }

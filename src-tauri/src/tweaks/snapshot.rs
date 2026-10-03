@@ -1152,7 +1152,6 @@ pub(crate) fn durable_write(
     bytes: &[u8],
     replace: bool,
 ) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::{
         MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
     };
@@ -1162,13 +1161,7 @@ pub(crate) fn durable_write(
     tmp.as_file().sync_all()?;
     // `keep` clears FILE_ATTRIBUTE_TEMPORARY, which would otherwise ride along to `dest`.
     let src = tmp.into_temp_path().keep().map_err(|e| e.error)?;
-    let wide = |p: &Path| -> Vec<u16> {
-        p.as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    };
-    let (from, to) = (wide(&src), wide(dest));
+    let (from, to) = (crate::services::wide(&src), crate::services::wide(dest));
     let flags = MOVEFILE_WRITE_THROUGH
         | if replace {
             MOVEFILE_REPLACE_EXISTING

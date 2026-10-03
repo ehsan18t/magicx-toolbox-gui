@@ -21,7 +21,6 @@
       "allow": [{ "url": "https://*" }, { "url": "http://*" }, { "url": "mailto:*" }, { "url": "ms-windows-store:*" }]
     },
     "dialog:allow-open",
-    "dialog:allow-save",
-    "process:allow-exit"
+    "dialog:allow-save"
   ]
 }

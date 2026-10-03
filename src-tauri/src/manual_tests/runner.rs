@@ -175,7 +175,7 @@ fn publish_status(app: &AppHandle, tweak: &Tweak) {
             tweak_id: tweak.id.clone(),
             status,
         };
-        Ok(app.emit("tweak-status", event)?)
+        Ok(app.emit("tweak-status", [event])?)
     });
     if let Err(e) = emitted {
         log::warn!(

@@ -10,12 +10,12 @@ src/
 ├── main.rs             # Binary entry point
 ├── error.rs            # Custom error types (thiserror)
 ├── setup.rs            # Startup initialization and managed state
-├── window_watchdog.rs  # Shows the window if the frontend never does
+├── main_window.rs      # First show on page load, startup failure box, shutdown block reason
 ├── apps/               # App items: presence, removal and install (ADR-0009)
 ├── logging/            # On-device logger: redaction, session buffer and files, settings (ADR-0010)
 ├── commands/           # Tauri command handlers
 │   ├── apps.rs         # App item query/remove/install commands
-│   ├── general.rs      # Window display
+│   ├── general.rs      # Window background colour
 │   ├── elevation.rs    # Restart as administrator
 │   ├── update.rs       # App update checking
 │   ├── system.rs       # System info retrieval

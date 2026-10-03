@@ -47,18 +47,19 @@ sequenceDiagram
   L->>L: single-instance guard
   L->>L: open snapshot store, claims store, probe cache, read MachineGuid
   L->>L: startup crash scan (records Needs Attention)
-  FE->>CMD: get_tweaks and get_categories
-  Note over FE: every row shows "Checking"
   FE->>FE: listen for tweak-status
   FE->>CMD: get_statuses_stream
   CMD->>SCAN: spawn full scan
   CMD-->>FE: returns immediately
-  loop each tweak, in parallel, in completion order
-    SCAN-->>FE: tweak-status event with a stamp
+  FE->>CMD: get_tweaks and get_categories, alongside the scan
+  Note over FE: every row shows "Checking"
+  loop every ~16 ms, in completion order
+    SCAN-->>FE: tweak-status event: an array of stamped statuses
   end
 ```
 
-- The backend does not scan by itself; the frontend starts the scan once it has the catalog, and registers its event listener first so no status is missed.
+- The backend does not scan by itself; the frontend starts the scan alongside the catalog load, and registers its event listener first so no status is missed.
+- Tweaks whose detection runs a script probe scan on a separate pool of four threads, so the native reads are not queued behind them. The app scan splits the same way and shares that pool.
 - A status that arrives before its tweak is in the model is buffered and applied when the model loads.
 - Every status carries a stamp; the frontend ignores a status older than the one it holds.
 

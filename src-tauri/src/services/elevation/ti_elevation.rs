@@ -23,8 +23,8 @@ use windows_sys::Win32::System::Threading::{
 
 use super::broker::AcquireReason;
 use super::common::{
-    empty_process_info, hidden_startup_info, spawn_failed, to_wide_string, wait_and_reap,
-    DebugPrivilege, SpawnError, ELEVATED_PROCESS_TIMEOUT_MS,
+    empty_process_info, hidden_startup_info, spawn_failed, wait_and_reap, DebugPrivilege,
+    SpawnError, ELEVATED_PROCESS_TIMEOUT_MS,
 };
 
 /// dwCurrentState values we distinguish while waiting for the service.
@@ -77,7 +77,7 @@ fn start_trusted_installer_service() -> Result<u32, Error> {
             )));
         }
 
-        let service_name = to_wide_string("TrustedInstaller");
+        let service_name = crate::services::wide("TrustedInstaller");
         let service = OpenServiceW(
             scm,
             service_name.as_ptr(),
@@ -328,7 +328,7 @@ fn get_trusted_installer_handle() -> Result<HANDLE, SpawnError> {
 
 /// The TI service's (state, pid), by query only: never starts it.
 fn ti_service_status() -> Result<(u32, u32), Error> {
-    let name = to_wide_string("TrustedInstaller");
+    let name = crate::services::wide("TrustedInstaller");
     // SAFETY: each handle opened here is closed before returning; the buffer fits the struct.
     unsafe {
         let scm = OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT);
@@ -500,7 +500,7 @@ pub(super) fn spawn_as_trusted_installer(command_line: &str) -> Result<i32, Spaw
     // Never log `command_line`: it carries the request and response temp paths.
     let mut work_dir = system_folder(GetSystemDirectoryW, "System32").map_err(spawn_failed)?;
     work_dir.push(0);
-    let mut command_wide = to_wide_string(command_line);
+    let mut command_wide = crate::services::wide(command_line);
 
     // Built before the TI handle opens, so a fallible build here cannot leak it.
     #[cfg(feature = "test-build")]

@@ -24,6 +24,16 @@ export function isAppExiting(error: unknown): boolean {
   return asBackendError(error)?.code === "APP_EXITING";
 }
 
+/** The UAC prompt was declined or dismissed: nothing failed, the app keeps running as it was. */
+export function isElevationDeclined(error: unknown): boolean {
+  return asBackendError(error)?.code === "ELEVATION_DECLINED";
+}
+
+/** The app cannot replace its own exe, so the update must be downloaded by hand. */
+export function isUpdateFolderReadOnly(error: unknown): boolean {
+  return asBackendError(error)?.code === "UPDATE_FOLDER_READ_ONLY";
+}
+
 /** What the user can do about a failed apply or restore, or null when the message already covers it. */
 export function tweakFailureAdvice(error: unknown, level: Level): string | null {
   switch (asBackendError(error)?.code) {

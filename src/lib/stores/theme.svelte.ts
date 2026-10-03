@@ -1,4 +1,6 @@
+import { setWindowBackground } from "$lib/api/system";
 import { STORAGE_KEYS } from "$lib/config/app";
+import { logError } from "$lib/utils/logger";
 import { duration } from "$lib/utils/motion";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 
@@ -13,6 +15,7 @@ let transitionTimer: ReturnType<typeof setTimeout> | undefined;
 
 function paint(theme: Theme) {
   document.documentElement.setAttribute("data-theme", theme);
+  setWindowBackground(theme === "dark").catch((error) => logError("Failed to set the window background", error));
 }
 
 function set(theme: Theme) {

@@ -1,14 +1,14 @@
 //! Tauri commands for app items (ADR-0009). Removal and install run under the same per-id
 //! lifecycle lock as an apply, so close, restart and update wait for them.
 
-use rayon::prelude::*;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
 use crate::apps::{self, install_route, AppPresence, AppsState, InstallRoute, Machine};
 use crate::commands::logging::log_outcome;
 use crate::commands::tweaks::{
-    blocking, compute_availability, current_app_level, next_status_stamp, run_locked, Availability,
+    blocking, compute_availability, current_app_level, next_status_stamp, run_locked, scan_split,
+    Availability,
 };
 use crate::error::{Error, Result};
 use crate::tweaks::compiled_apps;
@@ -181,8 +181,11 @@ fn scan(
             log::warn!("app scan: {e}");
         }
     }
-    apps.par_iter()
-        .filter_map(|app| {
+    let mut statuses = Vec::with_capacity(apps.len());
+    scan_split(
+        apps,
+        is_script,
+        |app| {
             // Stamped before the check: a removal that locks after it stamps higher and wins.
             let stamp = next_status_stamp();
             if is_locked(&app.id) {
@@ -206,8 +209,10 @@ fn scan(
                 install_route: install_route(app.install.as_ref(), winget, store),
                 stamp,
             })
-        })
-        .collect()
+        },
+        |batch| statuses.extend(batch),
+    );
+    statuses
 }
 
 fn refusal(app: &AppDef, availability: Availability, winver: &WinVer) -> Result<()> {

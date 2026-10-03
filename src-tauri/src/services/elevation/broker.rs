@@ -1715,7 +1715,7 @@ mod tests {
         use windows_sys::Win32::Foundation::LocalFree;
         use windows_sys::Win32::UI::Shell::CommandLineToArgvW;
 
-        let wide = super::super::common::to_wide_string(cmdline);
+        let wide = crate::services::wide(cmdline);
         let mut argc = 0;
         // SAFETY: `wide` is NUL-terminated; each entry is a NUL-terminated string inside the one
         // allocation, freed once all are copied out.

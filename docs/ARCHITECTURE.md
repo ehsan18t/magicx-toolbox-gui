@@ -43,8 +43,8 @@ const derived = $derived(store.value);
 | `tweakActions` | `tweakActionsStore` | Apply, restore and keep-current-state (single and batch), with per-tweak running and error state |
 | `tweaksPending` | `pendingChangesStore`, `pendingRebootStore` | Staged changes, and tweaks waiting for a restart |
 | `apps` | `appsStore` | App items, their presence, and Remove, Install and Get in Store (ADR-0009) |
-| `boot` | `bootStore` | The launch sequence after the tweak model: system info, elevation, app presence, the status stream |
-| `system` | `systemStore` | Windows and hardware info, cached across launches |
+| `boot` | `bootStore` | The launch sequence: the tweak model, the status stream, system info and elevation start together; app presence follows the model |
+| `system` | `systemStore` | Windows and hardware info. The last good hardware read is cached across launches and painted at once under freshly read Windows fields; every launch then rereads the hardware (WMI) in the background and replaces the cache only when that read fully succeeds. With nothing cached, the card waits for the full read |
 | `elevation` | `elevationStore` | The app's elevation ceiling, whether it runs as admin, and Restart as admin |
 | `favorites` | `favoritesStore` | Starred tweak ids |
 | `snapshotHistory` | `createSnapshotHistory()` | One details window's snapshot entries and discard |
@@ -83,7 +83,7 @@ src/lib/components/
 └── shared/    # Icon, MarkdownText
 ```
 
-The navigation pane docks expanded at a window width of 1008px and above (the title bar toggle collapses it, and the choice is kept), shows icons only below that, and opens over the content when toggled there. The Logs panel docks under the content column, beside the navigation pane rather than under it. `src/Workspace.svelte` renders it, and the boot error screen in `src/App.svelte` renders its own, so it stays reachable when loading fails. Design tokens (navy and slate neutrals, the Segoe UI Variable font, seven accent schemes per theme) live in `src/app.css`.
+The navigation pane docks expanded at a window width of 1008px and above (the title bar toggle collapses it, and the choice is kept), shows icons only below that, and opens over the content when toggled there. If the interface fails before it mounts, `src/main.ts` replaces the loading screen with a plain-page error and a Close button (no Svelte or app CSS needed), and an outer `svelte:boundary` in `src/App.svelte` catches a failure in the title bar, overlay or toasts with a Retry and Close screen; both say inline when the window cannot close. The Logs panel docks under the content column, beside the navigation pane rather than under it. `src/Workspace.svelte` renders it, and the boot error screen in `src/App.svelte` renders its own, so it stays reachable when loading fails. Design tokens (navy and slate neutrals, the Segoe UI Variable font, seven accent schemes per theme) live in `src/app.css`.
 
 ### Motion
 
@@ -241,6 +241,13 @@ Worked examples for every effect kind live in **[TWEAK_AUTHORING.md](./TWEAK_AUT
 ### 10. Window state and taskbar (`window_state.rs`, `taskbar.rs`)
 - The main window's size, position and maximized state persist through `tauri-plugin-window-state` (restored before the hidden window is shown, saved on exit and before a relaunch); the update download reports its progress in the Update modal and on the taskbar button.
 
+### 11. Self-update (`commands/update.rs`)
+- The app ships only as the portable `magicx-toolbox.exe`; `tauri.conf.json` has `bundle.active: false`, so `tauri build` emits the exe and no MSI or NSIS installer. A per-machine installer would put the exe in `Program Files`, where an unelevated app cannot write its `snapshots/` folder.
+- `check_for_update` reads the GitHub release list of `RELEASE_REPO` (the one repository constant, also used to check download URLs) and offers the newest release (pre-releases only when the setting allows) whose assets include `magicx-toolbox.exe`, matched case-insensitively by name; a release without it is skipped. The name lives in one constant, `PORTABLE_ASSET`, in the backend.
+- `install_update` takes the exit latch first (no apply may run while the exe is replaced), accepts only that asset from `https://github.com/ehsan18t/magicx-toolbox-gui/releases/download/<tag>/`, and refuses a release without GitHub's SHA-256 digest. It creates `<exe>.new` beside the running exe before downloading, so a folder the app cannot write to fails at once with `UPDATE_FOLDER_READ_ONLY` (the Update modal then links to the releases page). The download gets a time budget scaled to its size (at least 16 KiB/s, never under five minutes), so a slow connection still finishes. After the digest matches, it deletes a stale `<exe>.old` (one it cannot delete fails the update, naming the file), renames the running exe to `<exe>.old` (Windows allows renaming a running image), renames `<exe>.new` to the exe's name, saves the window state and starts the new exe with `--after-restart=<pid>` from its folder, then exits by itself. Both renames stay in one folder, so they are atomic on one volume; a single replace is not possible because Windows will not overwrite a running exe. Any failure discards `<exe>.new`, and any failure after the first rename moves `<exe>.old` back and returns an error; if even that fails, the error names the file to rename by hand.
+- `remove_update_leftovers()` deletes `<exe>.old` and any interrupted `<exe>.new` once the new version's window has first shown, in one attempt; a failure is logged and retried on the following start. Until then the previous version stays beside it, so a release that cannot start is not a dead end: its startup failure dialog names `<exe>.old` and how to rename it back.
+- The new version runs from the same folder, so it reads the same `snapshots/` history (ADR-0008).
+
 ---
 
 ## Commands (Tauri IPC)
@@ -306,6 +313,7 @@ src-tauri/src/tweaks/
 3. **Atomic rollback**: any apply failure restores the captured state; an incomplete rollback surfaces as **Needs Attention**, never hidden (ADR-0001)
 4. **No remote code**: All tweaks are compiled into the binary; no external downloads
 5. **Local logs**: logs never leave the PC on their own; personal details are redacted before any line is stored, and the user exports a diagnostics file deliberately (ADR-0010)
+6. **Verified updates**: an update installs only `magicx-toolbox.exe` from this repository's release downloads, and only when its SHA-256 matches the digest GitHub publishes for it
 
 ---
 

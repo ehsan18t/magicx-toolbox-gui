@@ -1,6 +1,7 @@
 import * as systemApi from "$lib/api/system";
 import * as tweaksApi from "$lib/api/tweaks";
 import type { Level } from "$lib/types";
+import { errorMessage, isElevationDeclined } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { toastStore } from "./toast.svelte";
 
@@ -43,7 +44,8 @@ export const elevationStore = {
     try {
       await systemApi.restartAsAdmin();
     } catch (error) {
-      toastStore.failure("Failed to restart as admin", error);
+      if (isElevationDeclined(error)) toastStore.info(errorMessage(error));
+      else toastStore.failure("Failed to restart as admin", error);
     } finally {
       isRestarting = false;
     }

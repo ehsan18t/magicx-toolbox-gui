@@ -33,7 +33,7 @@ sequenceDiagram
   participant New as New elevated app
   U->>App: Elevate
   App->>App: take the exit latch (refused if a tweak is being changed)
-  App->>UAC: relaunch self with runas, --after-restart and the logging settings
+  App->>UAC: relaunch self with runas, --after-restart=<pid> and the logging settings
   alt user accepts
     App->>App: exit
     New->>New: full launch, fresh status scan
@@ -50,7 +50,7 @@ There is no Admin helper process: once the app is elevated, `admin` steps simply
 
 Before an apply or restore reaches the engine, the command layer checks, in order:
 
-1. **Account guard** (tweaks that touch HKCU only). If the account running the app is not the owner of its session, a per-user change would land in the wrong hive. This happens when another administrator's credentials were typed into the UAC prompt. The check compares the process token's SID with the session owner's SID, falling back to account names; if they differ, or cannot be determined, the tweak is blocked. It is evaluated on every check, not once at startup, and applies to every tweak that touches HKCU at any level.
+1. **Account guard** (tweaks that touch HKCU only). If the account running the app is not the owner of its session, a per-user change would land in the wrong hive. This happens when another administrator's credentials were typed into the UAC prompt. The check compares the process token's SID with the session owner's SID, falling back to account names; if they differ, or cannot be determined, the tweak is blocked. The two SIDs are read once per process (neither changes while it runs, and elevating relaunches the app), with a failed read kept too so an unreachable domain controller stalls only the first check; the comparison runs on every check and applies to every tweak that touches HKCU at any level.
 2. **Needs elevation**. The app is running as `user` and some step would need more. The required level includes the level a shared claim's release would restore at.
 3. **Elevation path unavailable**. The tweak needs `ti` and the TrustedInstaller service is disabled or missing. This is known before the click: a one-time probe reads the service's startup type. A probe that cannot answer does not block.
 

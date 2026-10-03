@@ -607,8 +607,14 @@ pub(crate) fn history(tweak_id: &str, corpus: &Corpus, deps: &Deps) -> (bool, Op
 /// The Needs Attention record alone, for callers that already know the history state -- reading it
 /// through `history` would cost a full head walk for a boolean they throw away. A record that
 /// exists but cannot be read is surfaced as itself: as "no attention" it would hide a real mark.
+/// So is a failed startup crash scan, until a retry records what it found.
 pub(crate) fn attention(tweak_id: &str, deps: &Deps) -> Option<Attention> {
-    match deps.snapshots.attention(tweak_id, deps.machine_guid) {
+    let unscanned = crate::tweaks::engine::lifecycle::gate().unscanned_residue(
+        deps.snapshots,
+        tweak_id,
+        deps.machine_guid,
+    );
+    let recorded = match deps.snapshots.attention(tweak_id, deps.machine_guid) {
         Ok(attention) => attention,
         Err(e) => {
             log::error!("detect '{tweak_id}': Needs Attention record unreadable: {e}");
@@ -625,7 +631,8 @@ pub(crate) fn attention(tweak_id: &str, deps: &Deps) -> Option<Attention> {
                 }],
             })
         }
-    }
+    };
+    crate::tweaks::engine::lifecycle::with_unscanned(recorded, unscanned)
 }
 
 #[cfg(test)]

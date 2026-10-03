@@ -2,7 +2,7 @@
 import type { TweakStatusView } from "./TweakStatusView";
 
 /**
- * `tweak-status`'s event payload: one tweak's freshly detected status,
- * emitted per-tweak by [`scan_and_emit`] -- never batched into one final blob.
+ * One tweak's freshly detected status. `tweak-status` carries an array of these: [`scan_and_emit`]
+ * batches by completion time, never into one final blob.
  */
 export type TweakStatusEvent = { tweak_id: string, status: TweakStatusView, };

@@ -30,7 +30,7 @@ use crate::tweaks::engine::{
 };
 use crate::tweaks::model::{
     ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, Level, Opt, OptLabel, OptValue,
-    RiskLevel, Setting, SharedId, StartupType, Tweak, TypedRegValue, Value,
+    Probe, RiskLevel, Setting, SharedId, StartupType, Tweak, TypedRegValue, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{
@@ -771,8 +771,8 @@ pub struct ElevationState {
     pub sid_mismatch: bool,
 }
 
-/// `tweak-status`'s event payload: one tweak's freshly detected status,
-/// emitted per-tweak by [`scan_and_emit`] -- never batched into one final blob.
+/// One tweak's freshly detected status. `tweak-status` carries an array of these: [`scan_and_emit`]
+/// batches by completion time, never into one final blob.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TweakStatusEvent {
@@ -1104,45 +1104,121 @@ fn scan_one_stamped(
     }
 }
 
-/// Emits one status per tweak as it completes, never one final blob. Parallel on rayon (performance:
-/// Action probes spawn processes); `emit` runs on the calling thread, so it needs no `Send`.
-/// Emission is completion order: the UI keys on `tweak_id`.
-fn scan_and_emit(corpus: &Corpus, deps: &Deps<'_>, mut emit: impl FnMut(TweakStatusEvent)) {
+/// Whether detecting `tweak` spawns a script, which blocks its thread for 0.5-3 s.
+fn has_script_probe(tweak: &Tweak) -> bool {
+    tweak.surface.iter().any(|effect| {
+        matches!(
+            &effect.kind,
+            Effect::Action(ActionDef::Script {
+                probe: Some(Probe::Script(_)),
+                ..
+            })
+        )
+    })
+}
+
+/// Bounded: each probe starts an interpreter, so more at once only contend for CPU.
+const SCRIPT_PROBE_THREADS: usize = 4;
+
+/// Shared by the tweak and app scans; `None` (logged) falls back to rayon's global pool.
+fn script_probe_pool() -> Option<&'static rayon::ThreadPool> {
+    static POOL: std::sync::OnceLock<Option<rayon::ThreadPool>> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(SCRIPT_PROBE_THREADS)
+            .thread_name(|i| format!("script-probe-{i}"))
+            .build()
+            .inspect_err(|e| log::warn!("script probe pool: {e}; probing on the shared pool"))
+            .ok()
+    })
+    .as_ref()
+}
+
+/// How long a scan gathers completed results into one batch: about one frame.
+const SCAN_BATCH_WINDOW: std::time::Duration = std::time::Duration::from_millis(16);
+
+/// Runs `scan` over `items` in parallel: the items `is_script` picks on [`script_probe_pool`], the
+/// rest on rayon's global pool at the same time, so a script probe never holds up a native read.
+/// `sink` runs on the calling thread (so it needs no `Send`) with each batch, in completion order.
+pub(crate) fn scan_split<T: Sync, R: Send>(
+    items: &[T],
+    is_script: impl Fn(&T) -> bool,
+    scan: impl Fn(&T) -> Option<R> + Sync,
+    mut sink: impl FnMut(Vec<R>),
+) {
+    let (scripted, native): (Vec<&T>, Vec<&T>) = items.iter().partition(|item| is_script(item));
+    let scan = &scan;
+    let send = move |tx: &mut std::sync::mpsc::Sender<R>, item: &T| {
+        if let Some(result) = scan(item) {
+            // A closed receiver only happens if the drain below panicked; nothing to do.
+            let _ = tx.send(result);
+        }
+    };
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::scope(|s| {
+        let script_tx = tx.clone();
         s.spawn(move || {
-            corpus.tweaks.par_iter().for_each_with(tx, |tx, tweak| {
-                // Skip a tweak mid-apply/restore: its half-driven surface would publish a status
-                // never true of the machine; the apply emits its own. Stamped before the check:
-                // an apply that locks after it stamps higher and wins.
-                let stamp = next_status_stamp();
-                if lifecycle::is_locked(&tweak.id) {
-                    log::debug!("skipping {} in the sweep: apply in flight", tweak.id);
-                    return;
-                }
-                // A closed receiver only happens if the drain below panicked; nothing to do.
-                let _ = tx.send(scan_one_stamped(tweak, corpus, deps, stamp));
-            });
+            let run = move || {
+                scripted
+                    .into_par_iter()
+                    .for_each_with(script_tx, |tx, item| send(tx, item))
+            };
+            match script_probe_pool() {
+                Some(pool) => pool.install(run),
+                None => run(),
+            }
         });
-        for event in rx {
-            emit(event);
+        s.spawn(move || {
+            native
+                .into_par_iter()
+                .for_each_with(tx, |tx, item| send(tx, item))
+        });
+        while let Ok(first) = rx.recv() {
+            let mut batch = vec![first];
+            let deadline = std::time::Instant::now() + SCAN_BATCH_WINDOW;
+            while let Ok(result) =
+                rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            {
+                batch.push(result);
+            }
+            sink(batch);
         }
     });
 }
 
-/// Spawns the corpus-wide detect sweep on a plain OS thread (never the UI thread), emitting one
-/// `tweak-status` event per tweak as [`scan_and_emit`] produces it. Shared by
+/// Emits statuses in batches as they complete, never one final blob: the UI keys on `tweak_id`.
+fn scan_and_emit(corpus: &Corpus, deps: &Deps<'_>, emit: impl FnMut(Vec<TweakStatusEvent>)) {
+    scan_split(
+        &corpus.tweaks,
+        has_script_probe,
+        |tweak| {
+            // Skip a tweak mid-apply/restore: its half-driven surface would publish a status
+            // never true of the machine; the apply emits its own. Stamped before the check:
+            // an apply that locks after it stamps higher and wins.
+            let stamp = next_status_stamp();
+            if lifecycle::is_locked(&tweak.id) {
+                log::debug!("skipping {} in the sweep: apply in flight", tweak.id);
+                return None;
+            }
+            Some(scan_one_stamped(tweak, corpus, deps, stamp))
+        },
+        emit,
+    );
+}
+
+/// Spawns the corpus-wide detect sweep on a plain OS thread (never the UI thread), emitting each
+/// batch [`scan_and_emit`] produces as one `tweak-status` event. Shared by
 /// `get_statuses_stream` and `rescan_after_elevation`.
 fn spawn_full_scan(app: AppHandle) {
     std::thread::spawn(move || {
         let state = app.state::<TweakEngineState>();
         let deps = build_deps(state.inner());
         let corpus = compiled_corpus();
-        scan_and_emit(corpus, &deps, |event| {
-            if let Err(e) = app.emit("tweak-status", &event) {
+        scan_and_emit(corpus, &deps, |batch| {
+            if let Err(e) = app.emit("tweak-status", &batch) {
                 log::warn!(
-                    "tweak status scan: failed to emit for '{}': {e}",
-                    event.tweak_id
+                    "tweak status scan: failed to emit {} statuses: {e}",
+                    batch.len()
                 );
             }
         });
@@ -1532,7 +1608,8 @@ mod tests {
     use crate::tweaks::kinds::{EffectKind, Error as KindError, ExecCx};
     use crate::tweaks::model::{
         ActionDef, BuildExpr, Effect, EffectDef, Hive, Opt, OptValue, RegAddr, RegType,
-        RiskLevel as ModelRisk, ScopedValue, Setting, StartupType, SvcAddr, WindowsScope,
+        RiskLevel as ModelRisk, ScopedValue, Script, Setting, Shell, StartupType, SvcAddr,
+        WindowsScope,
     };
     use crate::tweaks::winver::WinVer;
     use std::collections::BTreeMap;
@@ -2486,7 +2563,7 @@ mod tests {
         let deps = h.deps();
 
         let mut events: Vec<TweakStatusEvent> = Vec::new();
-        scan_and_emit(&c, &deps, |event| events.push(event));
+        scan_and_emit(&c, &deps, |batch| events.extend(batch));
 
         assert_eq!(
             events.len(),
@@ -2496,6 +2573,63 @@ mod tests {
         let mut got: Vec<&str> = events.iter().map(|e| e.tweak_id.as_str()).collect();
         got.sort_unstable();
         assert_eq!(got, ids, "every tweak reported exactly once");
+    }
+
+    #[test]
+    fn script_items_scan_on_the_script_pool_and_the_rest_do_not() {
+        let items: Vec<(u32, bool)> = (0..24).map(|i| (i, i % 3 == 0)).collect();
+        let mut seen = Vec::new();
+        scan_split(
+            &items,
+            |item| item.1,
+            |item| {
+                let thread = std::thread::current();
+                let on_pool = thread.name().is_some_and(|n| n.starts_with("script-probe"));
+                (item.0 != 5).then_some((item.0, item.1, on_pool))
+            },
+            |batch| seen.extend(batch),
+        );
+        assert_eq!(seen.len(), 23, "every item once, a skipped one never");
+        for (id, scripted, on_pool) in seen {
+            assert_eq!(on_pool, scripted, "item {id}");
+        }
+    }
+
+    #[test]
+    fn only_a_script_probe_counts_as_scripted() {
+        let action = |probe: Option<Probe>| EffectDef {
+            id: EffectId("act".to_string()),
+            kind: Effect::Action(ActionDef::Script {
+                apply: Script("apply".into()),
+                undo: None,
+                probe,
+                ephemeral: false,
+                shell: Shell::PowerShell,
+                timeout: None,
+            }),
+            elevation: None,
+            optional: false,
+            if_missing: None,
+            windows: None,
+        };
+        let with_surface = |effect: EffectDef| {
+            let mut t = tweak("t", vec![opt("On", StartupType::Manual)]);
+            t.surface.push(effect);
+            t
+        };
+        assert!(has_script_probe(&with_surface(action(Some(
+            Probe::Script(Script("exit 0".into()))
+        )))));
+        assert!(!has_script_probe(&with_surface(action(Some(
+            Probe::Registry {
+                hive: Hive::Hklm,
+                path: "SOFTWARE\\X".into(),
+                name: "Y".into(),
+                equals: 1,
+            }
+        )))));
+        assert!(!has_script_probe(&with_surface(action(None))));
+        assert!(!has_script_probe(&tweak("t", vec![])));
     }
 
     // Deadlocks (then times out) if the work runs on the calling async worker: the sender below

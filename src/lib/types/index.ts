@@ -27,6 +27,8 @@ import type { FirewallProtocol } from "./generated/FirewallProtocol";
 import type { FirewallRuleAction } from "./generated/FirewallRuleAction";
 import type { GpuInfo } from "./generated/GpuInfo";
 import type { HardwareInfo } from "./generated/HardwareInfo";
+import type { LiveSystemInfo } from "./generated/LiveSystemInfo";
+import type { MachineHardware } from "./generated/MachineHardware";
 import type { HeldInfoView as HeldInfo } from "./generated/HeldInfoView";
 import type { HostsAction } from "./generated/HostsAction";
 import type { HostsChangeView as HostsChange } from "./generated/HostsChangeView";
@@ -59,7 +61,7 @@ import type { SchedulerAction } from "./generated/SchedulerAction";
 import type { SchedulerChangeView as SchedulerChange } from "./generated/SchedulerChangeView";
 import type { ServiceChangeView as ServiceChange } from "./generated/ServiceChangeView";
 import type { StartupView as ServiceStartupType } from "./generated/StartupView";
-import type { SystemInfo } from "./generated/SystemInfo";
+import type { SystemReading } from "./generated/SystemReading";
 import type { TweakOptionView as TweakEffectOption } from "./generated/TweakOptionView";
 import type { TweakStateView } from "./generated/TweakStateView";
 import type { TweakStatusEvent } from "./generated/TweakStatusEvent";
@@ -100,6 +102,8 @@ export type {
   FirewallRuleAction,
   GpuInfo,
   HardwareInfo,
+  LiveSystemInfo,
+  MachineHardware,
   HeldInfo,
   HostsAction,
   HostsChange,
@@ -130,7 +134,7 @@ export type {
   SchedulerChange,
   ServiceChange,
   ServiceStartupType,
-  SystemInfo,
+  SystemReading,
   TweakEffectOption,
   TweakStateView,
   TweakStatusEvent,
@@ -169,6 +173,7 @@ export const BACKEND_ERROR_CODES = [
   "APPLY_IN_FLIGHT",
   "BACKUP_FAILED",
   "COMMAND_EXECUTION_FAILED",
+  "ELEVATION_DECLINED",
   "NOT_FOUND",
   "REGISTRY_ACCESS_DENIED",
   "REGISTRY_KEY_NOT_FOUND",
@@ -178,6 +183,7 @@ export const BACKEND_ERROR_CODES = [
   "TAURI_ERROR",
   "TWEAK_UNAVAILABLE",
   "UPDATE_ERROR",
+  "UPDATE_FOLDER_READ_ONLY",
   "VALIDATION_FAILED",
   "WINDOWS_API_ERROR",
 ] as const;
@@ -237,8 +243,11 @@ export interface TweakWithStatus {
   status: TweakStatus;
 }
 
-/** The static part of SystemInfo; uptime and elevation are re-read on every load. */
-export type CachedSystemInfo = Pick<SystemInfo, "hardware" | "device" | "computer_name"> & { cachedAt: string };
+/** What the system card shows: the live fields over the hardware read. */
+export type SystemInfo = LiveSystemInfo & MachineHardware;
+
+/** The last good hardware read, shown while the next one runs. */
+export type CachedSystemInfo = MachineHardware & { cachedAt: string };
 
 export interface PendingChange {
   tweakId: string;

@@ -1,10 +1,12 @@
 use crate::error::Error;
 use crate::models::{
-    CpuInfo, DeviceInfo, DiskInfo, GpuInfo, HardwareInfo, MemoryInfo, MotherboardInfo, SystemInfo,
-    WindowsInfo,
+    CpuInfo, DeviceInfo, DiskInfo, GpuInfo, HardwareInfo, LiveSystemInfo, MachineHardware,
+    MemoryInfo, MotherboardInfo, SystemReading, WindowsInfo,
 };
+use crate::tweaks::winver::running_winver;
 use serde::Deserialize;
 use std::env;
+use windows_sys::Win32::System::SystemInformation::GetTickCount64;
 use winreg::enums::*;
 use winreg::RegKey;
 use wmi::WMIConnection;
@@ -81,16 +83,6 @@ struct MsftPhysicalDisk {
     health_status: Option<u16>, // 0=Healthy, 1=Warning, 2=Unhealthy
 }
 
-/// Win32_OperatingSystem for uptime, install date, and name
-#[derive(Deserialize, Debug)]
-#[serde(rename = "Win32_OperatingSystem")]
-#[serde(rename_all = "PascalCase")]
-struct Win32OperatingSystem {
-    caption: Option<String>,
-    last_boot_up_time: Option<String>,
-    install_date: Option<String>,
-}
-
 /// Win32_ComputerSystem for device manufacturer/model
 #[derive(Deserialize, Debug)]
 #[serde(rename = "Win32_ComputerSystem")]
@@ -103,243 +95,123 @@ struct Win32ComputerSystem {
     pc_system_type: Option<u16>, // 1=Desktop, 2=Mobile, 3=Workstation, etc.
 }
 
-/// Retrieve Windows version information
-pub fn get_windows_info() -> Result<WindowsInfo, Error> {
-    log::trace!("Reading Windows version info from registry");
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let key = hklm
-        .open_subkey("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion")
-        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
+const CURRENT_VERSION_KEY: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
 
-    // Read product name (Legacy/Fallback)
-    let registry_product_name: String = key
+/// The running Windows version and uptime, from the registry and `RtlGetVersion`: no WMI.
+pub fn get_windows_info() -> Result<WindowsInfo, Error> {
+    let key = RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(CURRENT_VERSION_KEY, KEY_READ)
+        .map_err(|e| Error::RegistryAccessDenied(e.to_string()))?;
+    let build = running_winver().build;
+    let is_windows_11 = build >= 22000;
+    let registry_name: String = key
         .get_value("ProductName")
         .unwrap_or_else(|_| "Windows".to_string());
-
-    // Read display version (e.g., "23H2")
-    let display_version: String = key
-        .get_value("DisplayVersion")
-        .unwrap_or_else(|_| "".to_string());
-
-    // Read build number
-    let build_number: String = key
-        .get_value("CurrentBuildNumber")
-        .unwrap_or_else(|_| "0".to_string());
-
-    let build: u32 = build_number.parse().unwrap_or(0);
-    // Is Windows 11? (Build >= 22000)
-    let is_windows_11 = build >= 22000;
-    let version_string = if is_windows_11 {
-        "11".to_string()
-    } else {
-        "10".to_string()
+    // SAFETY: no arguments; it cannot fail.
+    let uptime_seconds = unsafe { GetTickCount64() } / 1000;
+    let info = WindowsInfo {
+        product_name: product_name(&registry_name, build),
+        display_version: key.get_value("DisplayVersion").unwrap_or_default(),
+        build_number: build.to_string(),
+        is_windows_11,
+        version_string: if is_windows_11 { "11" } else { "10" }.to_string(),
+        uptime_seconds,
+        install_date: key
+            .get_value::<u32, _>("InstallDate")
+            .ok()
+            .and_then(install_date_iso),
     };
-
-    // Get uptime, install date, and caption from WMI
-    let (uptime_seconds, install_date, os_caption) = get_os_info();
-
-    // Use WMI caption as product name (more accurate for LTSC/IoT) or fallback to registry
-    let mut product_name = os_caption.unwrap_or(registry_product_name);
-
-    if product_name.starts_with("Microsoft ") {
-        product_name = product_name.replacen("Microsoft ", "", 1);
-    }
-
     log::info!(
         "Detected Windows {} (build {}, {}), uptime={}s",
-        version_string,
-        build_number,
-        display_version,
+        info.version_string,
+        info.build_number,
+        info.display_version,
         uptime_seconds
     );
-
-    Ok(WindowsInfo {
-        product_name,
-        display_version,
-        build_number,
-        is_windows_11,
-        version_string,
-        uptime_seconds,
-        install_date,
-    })
+    Ok(info)
 }
 
-/// Get uptime, install date, and caption from Win32_OperatingSystem
-fn get_os_info() -> (u64, Option<String>, Option<String>) {
-    let wmi_con = match WMIConnection::new() {
-        Ok(con) => con,
-        Err(e) => {
-            log::warn!("Failed to create WMI connection for OS info: {}", e);
-            return (0, None, None);
-        }
-    };
-
-    let query: Vec<Win32OperatingSystem> = wmi_con.query().unwrap_or_default();
-    if let Some(os) = query.first() {
-        // Parse WMI datetime format: "20240115123456.000000+000"
-        let uptime_seconds = os
-            .last_boot_up_time
-            .as_ref()
-            .map(|boot_time| parse_wmi_datetime_to_uptime(boot_time))
-            .unwrap_or(0);
-
-        // Convert install date to ISO 8601
-        let install_date = os
-            .install_date
-            .as_ref()
-            .map(|d| parse_wmi_datetime_to_iso(d));
-
-        let caption = os.caption.clone();
-
-        (uptime_seconds, install_date, caption)
+/// `ProductName` still reads "Windows 10" on Windows 11, so the build decides the major.
+fn product_name(registry_name: &str, build: u32) -> String {
+    let name = registry_name
+        .strip_prefix("Microsoft ")
+        .unwrap_or(registry_name);
+    if build >= 22000 {
+        name.replacen("Windows 10", "Windows 11", 1)
     } else {
-        (0, None, None)
+        name.to_string()
     }
 }
 
-/// Parse WMI datetime format to uptime in seconds
-fn parse_wmi_datetime_to_uptime(wmi_datetime: &str) -> u64 {
-    // WMI format: "20240115123456.123456+000"
-    // Extract: YYYYMMDDHHMMSS
-    if wmi_datetime.len() < 14 {
-        return 0;
-    }
-
-    let year: i32 = wmi_datetime[0..4].parse().unwrap_or(0);
-    let month: u32 = wmi_datetime[4..6].parse().unwrap_or(1);
-    let day: u32 = wmi_datetime[6..8].parse().unwrap_or(1);
-    let hour: u32 = wmi_datetime[8..10].parse().unwrap_or(0);
-    let min: u32 = wmi_datetime[10..12].parse().unwrap_or(0);
-    let sec: u32 = wmi_datetime[12..14].parse().unwrap_or(0);
-
-    // Calculate seconds since boot using simple date arithmetic
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    // Convert boot time to approximate Unix timestamp
-    // This is a simplified calculation - for display purposes only
-    let days_since_epoch = (year - 1970) * 365 + (year - 1969) / 4 - (year - 1901) / 100
-        + (year - 1601) / 400
-        + days_before_month(month, is_leap_year(year))
-        + day as i32
-        - 1;
-    let boot_secs =
-        days_since_epoch as u64 * 86400 + hour as u64 * 3600 + min as u64 * 60 + sec as u64;
-
-    // Get current time
-    let now_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    now_secs.saturating_sub(boot_secs)
+/// `InstallDate` is Unix seconds (UTC).
+fn install_date_iso(unix_seconds: u32) -> Option<String> {
+    chrono::DateTime::from_timestamp(i64::from(unix_seconds), 0)
+        .map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
 
-fn days_before_month(month: u32, leap: bool) -> i32 {
-    let days = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-    let base = days
-        .get(month.saturating_sub(1) as usize)
-        .copied()
-        .unwrap_or(0);
-    if leap && month > 2 {
-        base + 1
-    } else {
-        base
-    }
+/// A failed WMI connection or query, so a partial read is never mistaken for the hardware.
+fn wmi_failed(what: &'static str) -> impl Fn(wmi::WMIError) -> Error {
+    move |e| Error::WindowsApi(format!("WMI {what}: {e}"))
 }
 
-fn is_leap_year(year: i32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+fn connect() -> Result<WMIConnection, Error> {
+    WMIConnection::new().map_err(wmi_failed("connection"))
 }
 
-/// Parse WMI datetime to ISO 8601 format
-fn parse_wmi_datetime_to_iso(wmi_datetime: &str) -> String {
-    if wmi_datetime.len() < 14 {
-        return wmi_datetime.to_string();
-    }
-    format!(
-        "{}-{}-{}T{}:{}:{}",
-        &wmi_datetime[0..4],
-        &wmi_datetime[4..6],
-        &wmi_datetime[6..8],
-        &wmi_datetime[8..10],
-        &wmi_datetime[10..12],
-        &wmi_datetime[12..14]
-    )
+fn joined<T>(
+    handle: std::thread::ScopedJoinHandle<'_, Result<T, Error>>,
+    what: &str,
+) -> Result<T, Error> {
+    handle
+        .join()
+        .map_err(|_| Error::WindowsApi(format!("the {what} read panicked")))?
 }
 
-/// Get hardware information using WMI queries (parallelized with connection reuse)
-/// Uses 3 threads instead of 7 to reduce COM initialization overhead:
-/// - Thread 1: Fast cimv2 queries (CPU, Memory, Motherboard, Network) - same connection
-/// - Thread 2: Slow cimv2 queries (GPU, Monitors) - WinAPI/registry intensive
-/// - Thread 3: Storage namespace queries (Disks) - different WMI namespace
-fn get_hardware_info() -> HardwareInfo {
-    log::debug!("Gathering hardware information via WMI (3-thread hybrid)");
-
-    use std::thread;
+/// Every WMI read, on three threads that each own a COM apartment and a connection: one
+/// connection per query costs more in setup than the queries take.
+fn read_machine_hardware() -> Result<MachineHardware, Error> {
     let start = std::time::Instant::now();
-
-    // Run WMI queries in parallel using scoped threads with connection reuse
-    let (cpu, memory, motherboard, network, gpu, monitors, disks) = thread::scope(|s| {
-        // Thread 1: Fast cimv2 queries - reuse single connection for 4 queries
-        let fast_cimv2_handle = s.spawn(|| match WMIConnection::new() {
-            Ok(con) => (
-                get_cpu_info(&con),
-                get_memory_info(&con),
-                get_motherboard_info(&con),
-                get_network_info(&con),
-            ),
-            Err(e) => {
-                log::debug!("WMI connection failed for fast cimv2 queries: {}", e);
-                (
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                    Default::default(),
-                )
-            }
+    let (cimv2, display, storage) = std::thread::scope(|s| {
+        let cimv2 = s.spawn(|| -> Result<_, Error> {
+            let con = connect()?;
+            Ok((
+                get_cpu_info(&con)?,
+                get_memory_info(&con)?,
+                get_motherboard_info(&con)?,
+                get_network_info(&con)?,
+                get_device_info(&con)?,
+            ))
         });
-
-        // Thread 2: Slow cimv2 queries (GPU + Monitors) - WinAPI/registry heavy
-        let slow_cimv2_handle = s.spawn(|| match WMIConnection::new() {
-            Ok(con) => (get_gpu_info(&con), get_monitor_info(&con)),
-            Err(e) => {
-                log::debug!("WMI connection failed for slow cimv2 queries: {}", e);
-                (Default::default(), Default::default())
-            }
+        let display = s.spawn(|| -> Result<_, Error> {
+            let con = connect()?;
+            Ok((get_gpu_info(&con)?, get_monitor_info(&con)))
         });
-
-        // Thread 3: Storage namespace - uses different WMI namespace internally
-        let storage_handle = s.spawn(|| match WMIConnection::new() {
-            Ok(con) => get_disk_info(&con),
-            Err(e) => {
-                log::debug!("WMI connection failed for disk info: {}", e);
-                Default::default()
-            }
-        });
-
-        // Wait for all threads to complete
-        let (cpu, memory, motherboard, network) = fast_cimv2_handle.join().unwrap_or_default();
-        let (gpu, monitors) = slow_cimv2_handle.join().unwrap_or_default();
-        let disks = storage_handle.join().unwrap_or_default();
-
-        (cpu, memory, motherboard, network, gpu, monitors, disks)
+        let storage = s.spawn(|| get_disk_info(&connect()?));
+        (
+            joined(cimv2, "CPU, memory, board and network"),
+            joined(display, "GPU and monitor"),
+            joined(storage, "disk"),
+        )
     });
-
+    let (cpu, memory, motherboard, network, device) = cimv2?;
+    let (gpu, monitors) = display?;
+    let disks = storage?;
     log::debug!("Hardware info gathered in {:?}", start.elapsed());
 
-    // Calculate total storage
     let total_storage_gb: f64 = disks.iter().map(|d| d.size_gb).sum();
-
-    HardwareInfo {
-        cpu,
-        gpu,
-        monitors,
-        memory,
-        motherboard,
-        disks,
-        network,
-        total_storage_gb,
-    }
+    Ok(MachineHardware {
+        hardware: HardwareInfo {
+            cpu,
+            gpu,
+            monitors,
+            memory,
+            motherboard,
+            disks,
+            network,
+            total_storage_gb,
+        },
+        device,
+    })
 }
 
 use std::mem::size_of;
@@ -366,10 +238,10 @@ struct Win32PnPEntity {
 }
 
 /// Get monitor information using WinAPI (EnumDisplayDevices/EnumDisplaySettings) + WMI
-fn get_monitor_info(_wmi_con: &WMIConnection) -> Vec<crate::models::MonitorInfo> {
+fn get_monitor_info(wmi_con: &WMIConnection) -> Vec<crate::models::MonitorInfo> {
     log::debug!("Gathering monitor info via Nested EnumDisplayDevices + WMI + PnP");
 
-    let monitor_names = get_all_monitor_names();
+    let monitor_names = get_all_monitor_names(wmi_con);
     let mut monitors = Vec::new();
     let mut adapter_index = 0;
 
@@ -517,13 +389,8 @@ fn get_monitor_info(_wmi_con: &WMIConnection) -> Vec<crate::models::MonitorInfo>
 }
 
 /// Get map of unique ID -> Friendly Name from WmiMonitorID and Win32_PnPEntity
-fn get_all_monitor_names() -> std::collections::HashMap<String, String> {
+fn get_all_monitor_names(wmi_con: &WMIConnection) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
-
-    let wmi_con = match WMIConnection::new() {
-        Ok(con) => con,
-        Err(_) => return map,
-    };
 
     // 1. Try WmiMonitorID (Best source for Model Names via EDID)
     if let Ok(wmi_monitor_con) = WMIConnection::with_namespace_path("root\\wmi") {
@@ -574,16 +441,11 @@ struct Win32NetworkAdapterConfiguration {
 }
 
 /// Get network information from WMI
-fn get_network_info(wmi_con: &WMIConnection) -> Vec<crate::models::NetworkInfo> {
-    let query: Vec<Win32NetworkAdapterConfiguration> = match wmi_con.query() {
-        Ok(results) => results,
-        Err(e) => {
-            log::warn!("Failed to query network info: {}", e);
-            return vec![];
-        }
-    };
+fn get_network_info(wmi_con: &WMIConnection) -> Result<Vec<crate::models::NetworkInfo>, Error> {
+    let query: Vec<Win32NetworkAdapterConfiguration> =
+        wmi_con.query().map_err(wmi_failed("network adapters"))?;
 
-    query
+    Ok(query
         .into_iter()
         .filter(|adapter| adapter.ip_enabled.unwrap_or(false))
         .map(|adapter| {
@@ -604,20 +466,14 @@ fn get_network_info(wmi_con: &WMIConnection) -> Vec<crate::models::NetworkInfo> 
                 dhcp_enabled: adapter.dhcp_enabled.unwrap_or(false),
             }
         })
-        .collect()
+        .collect())
 }
 
 /// Get CPU information from WMI
-fn get_cpu_info(wmi_con: &WMIConnection) -> CpuInfo {
-    let query: Vec<Win32Processor> = match wmi_con.query() {
-        Ok(results) => results,
-        Err(e) => {
-            log::warn!("Failed to query CPU info: {}", e);
-            return CpuInfo::default();
-        }
-    };
+fn get_cpu_info(wmi_con: &WMIConnection) -> Result<CpuInfo, Error> {
+    let query: Vec<Win32Processor> = wmi_con.query().map_err(wmi_failed("processor"))?;
 
-    if let Some(cpu) = query.first() {
+    Ok(if let Some(cpu) = query.first() {
         let architecture = match cpu.architecture {
             Some(0) => "x86".to_string(),
             Some(9) => "x64".to_string(),
@@ -634,20 +490,15 @@ fn get_cpu_info(wmi_con: &WMIConnection) -> CpuInfo {
         }
     } else {
         CpuInfo::default()
-    }
+    })
 }
 
 /// Get GPU information from WMI
-fn get_gpu_info(wmi_con: &WMIConnection) -> Vec<GpuInfo> {
-    let query: Vec<Win32VideoController> = match wmi_con.query() {
-        Ok(results) => results,
-        Err(e) => {
-            log::warn!("Failed to query GPU info: {}", e);
-            return vec![];
-        }
-    };
+fn get_gpu_info(wmi_con: &WMIConnection) -> Result<Vec<GpuInfo>, Error> {
+    let query: Vec<Win32VideoController> =
+        wmi_con.query().map_err(wmi_failed("video controllers"))?;
 
-    query
+    Ok(query
         .into_iter()
         .filter(|gpu| {
             // Filter out virtual/basic display adapters
@@ -682,7 +533,7 @@ fn get_gpu_info(wmi_con: &WMIConnection) -> Vec<GpuInfo> {
                 video_mode: gpu.video_mode_description.unwrap_or_else(String::new),
             }
         })
-        .collect()
+        .collect())
 }
 
 /// Helper: Get GPU VRAM size from Registry (handles value > 4GB)
@@ -717,17 +568,11 @@ fn get_gpu_vram_from_registry(driver_desc: &str) -> Option<u64> {
 }
 
 /// Get memory information from WMI
-fn get_memory_info(wmi_con: &WMIConnection) -> MemoryInfo {
-    let query: Vec<Win32PhysicalMemory> = match wmi_con.query() {
-        Ok(results) => results,
-        Err(e) => {
-            log::warn!("Failed to query memory info: {}", e);
-            return MemoryInfo::default();
-        }
-    };
+fn get_memory_info(wmi_con: &WMIConnection) -> Result<MemoryInfo, Error> {
+    let query: Vec<Win32PhysicalMemory> = wmi_con.query().map_err(wmi_failed("physical memory"))?;
 
     if query.is_empty() {
-        return MemoryInfo::default();
+        return Ok(MemoryInfo::default());
     }
 
     let total_bytes: u64 = query.iter().filter_map(|m| m.capacity).sum();
@@ -752,18 +597,17 @@ fn get_memory_info(wmi_con: &WMIConnection) -> MemoryInfo {
         })
         .unwrap_or_else(|| "Unknown".to_string());
 
-    MemoryInfo {
+    Ok(MemoryInfo {
         total_gb: (total_gb * 10.0).round() / 10.0,
         speed_mhz,
         memory_type,
         slots_used,
-    }
+    })
 }
 
 /// Get motherboard information from WMI
-fn get_motherboard_info(wmi_con: &WMIConnection) -> MotherboardInfo {
-    // Get baseboard info
-    let baseboard_query: Vec<Win32BaseBoard> = wmi_con.query().unwrap_or_default();
+fn get_motherboard_info(wmi_con: &WMIConnection) -> Result<MotherboardInfo, Error> {
+    let baseboard_query: Vec<Win32BaseBoard> = wmi_con.query().map_err(wmi_failed("baseboard"))?;
 
     let (manufacturer, product) = if let Some(board) = baseboard_query.first() {
         (
@@ -780,23 +624,22 @@ fn get_motherboard_info(wmi_con: &WMIConnection) -> MotherboardInfo {
         ("Unknown".to_string(), "Unknown".to_string())
     };
 
-    // Get BIOS version
-    let bios_query: Vec<Win32Bios> = wmi_con.query().unwrap_or_default();
+    let bios_query: Vec<Win32Bios> = wmi_con.query().map_err(wmi_failed("BIOS"))?;
     let bios_version = bios_query
         .first()
         .and_then(|b| b.smbios_bios_version.clone())
         .unwrap_or_else(|| "Unknown".to_string());
 
-    MotherboardInfo {
+    Ok(MotherboardInfo {
         manufacturer,
         product,
         bios_version,
-    }
+    })
 }
 
 /// Get disk drive information using MSFT_PhysicalDisk for reliable SSD/HDD detection
 /// Falls back to Win32_DiskDrive if storage namespace is unavailable
-fn get_disk_info(wmi_con: &WMIConnection) -> Vec<DiskInfo> {
+fn get_disk_info(wmi_con: &WMIConnection) -> Result<Vec<DiskInfo>, Error> {
     log::trace!("Querying MSFT_PhysicalDisk from storage namespace");
 
     // Try MSFT_PhysicalDisk first (more reliable for SSD/HDD detection)
@@ -804,7 +647,7 @@ fn get_disk_info(wmi_con: &WMIConnection) -> Vec<DiskInfo> {
     {
         let query: Vec<MsftPhysicalDisk> = storage_con.query().unwrap_or_default();
         if !query.is_empty() {
-            return query
+            return Ok(query
                 .into_iter()
                 .map(|disk| {
                     let model = disk
@@ -860,15 +703,15 @@ fn get_disk_info(wmi_con: &WMIConnection) -> Vec<DiskInfo> {
                         health_status,
                     }
                 })
-                .collect();
+                .collect());
         }
     }
 
     // Fallback to Win32_DiskDrive
     log::trace!("Falling back to Win32_DiskDrive");
-    let disk_query: Vec<Win32DiskDrive> = wmi_con.query().unwrap_or_default();
+    let disk_query: Vec<Win32DiskDrive> = wmi_con.query().map_err(wmi_failed("disk drives"))?;
 
-    disk_query
+    Ok(disk_query
         .into_iter()
         .map(|disk| {
             let model = disk.model.unwrap_or_else(|| "Unknown Drive".to_string());
@@ -913,14 +756,14 @@ fn get_disk_info(wmi_con: &WMIConnection) -> Vec<DiskInfo> {
                 health_status: None,
             }
         })
-        .collect()
+        .collect())
 }
 
 /// Get device information from Win32_ComputerSystem
-fn get_device_info(wmi_con: &WMIConnection) -> DeviceInfo {
-    let query: Vec<Win32ComputerSystem> = wmi_con.query().unwrap_or_default();
+fn get_device_info(wmi_con: &WMIConnection) -> Result<DeviceInfo, Error> {
+    let query: Vec<Win32ComputerSystem> = wmi_con.query().map_err(wmi_failed("computer system"))?;
 
-    if let Some(cs) = query.first() {
+    Ok(if let Some(cs) = query.first() {
         let manufacturer = cs
             .manufacturer
             .clone()
@@ -959,37 +802,20 @@ fn get_device_info(wmi_con: &WMIConnection) -> DeviceInfo {
         }
     } else {
         DeviceInfo::default()
-    }
+    })
 }
 
-/// Get full system information
-pub fn get_system_info() -> Result<SystemInfo, Error> {
-    log::debug!("Gathering system information");
-    let windows = get_windows_info()?;
-    let computer_name = env::var("COMPUTERNAME").unwrap_or_else(|_| "Unknown".to_string());
-    let username = env::var("USERNAME").unwrap_or_else(|_| "Unknown".to_string());
-    let is_admin = is_running_as_admin();
-
-    // Get hardware and device info using the same WMI connection
-    let wmi_con = WMIConnection::new().ok();
-    let hardware = get_hardware_info();
-    let device = wmi_con.as_ref().map(get_device_info).unwrap_or_default();
-
-    log::debug!(
-        "System info: computer={}, user={}, admin={}, device={}",
-        computer_name,
-        username,
-        is_admin,
-        device.model
-    );
-
-    Ok(SystemInfo {
-        windows,
-        computer_name,
-        username,
-        is_admin,
-        hardware,
-        device,
+/// The live fields, plus the WMI hardware read when `with_hardware`; a failed or partial read is `Err`.
+pub fn get_system_info(with_hardware: bool) -> Result<SystemReading, Error> {
+    let live = LiveSystemInfo {
+        windows: get_windows_info()?,
+        computer_name: env::var("COMPUTERNAME").unwrap_or_else(|_| "Unknown".to_string()),
+        username: env::var("USERNAME").unwrap_or_else(|_| "Unknown".to_string()),
+        is_admin: is_running_as_admin(),
+    };
+    Ok(SystemReading {
+        live,
+        machine: with_hardware.then(read_machine_hardware).transpose()?,
     })
 }
 
@@ -1050,98 +876,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_get_windows_info() {
-        let result = get_windows_info();
-        assert!(result.is_ok());
-        let info = result.unwrap();
+    fn windows_info_reads_without_wmi() {
+        let info = get_windows_info().expect("CurrentVersion is readable");
         assert!(info.version_string == "10" || info.version_string == "11");
-        assert!(!info.build_number.is_empty());
-    }
-
-    // ========================================================================
-    // is_leap_year tests
-    // ========================================================================
-
-    #[test]
-    fn test_is_leap_year_divisible_by_4_not_100() {
-        assert!(is_leap_year(2024));
-        assert!(is_leap_year(2020));
-        assert!(is_leap_year(2016));
+        assert!(info.build_number.parse::<u32>().unwrap() > 0);
+        assert!(info.uptime_seconds > 0);
     }
 
     #[test]
-    fn test_is_leap_year_divisible_by_100_not_400() {
-        assert!(!is_leap_year(1900));
-        assert!(!is_leap_year(2100));
-        assert!(!is_leap_year(2200));
+    fn product_name_takes_the_major_from_the_build() {
+        assert_eq!(
+            product_name("Windows 10 IoT Enterprise LTSC 2024", 26100),
+            "Windows 11 IoT Enterprise LTSC 2024"
+        );
+        assert_eq!(product_name("Windows 10 Pro", 19045), "Windows 10 Pro");
+        assert_eq!(
+            product_name("Microsoft Windows 10 Pro", 22631),
+            "Windows 11 Pro"
+        );
     }
 
     #[test]
-    fn test_is_leap_year_divisible_by_400() {
-        assert!(is_leap_year(2000));
-        assert!(is_leap_year(1600));
-        assert!(is_leap_year(2400));
-    }
-
-    #[test]
-    fn test_is_leap_year_not_divisible_by_4() {
-        assert!(!is_leap_year(2023));
-        assert!(!is_leap_year(2019));
-        assert!(!is_leap_year(2021));
-    }
-
-    // ========================================================================
-    // days_before_month tests
-    // ========================================================================
-
-    #[test]
-    fn test_days_before_month_january() {
-        assert_eq!(days_before_month(1, false), 0);
-        assert_eq!(days_before_month(1, true), 0);
-    }
-
-    #[test]
-    fn test_days_before_month_march_non_leap() {
-        // Jan(31) + Feb(28) = 59
-        assert_eq!(days_before_month(3, false), 59);
-    }
-
-    #[test]
-    fn test_days_before_month_march_leap() {
-        // Jan(31) + Feb(29) = 60
-        assert_eq!(days_before_month(3, true), 60);
-    }
-
-    #[test]
-    fn test_days_before_month_december() {
-        // 31+28+31+30+31+30+31+31+30+31+30 = 334 (non-leap)
-        assert_eq!(days_before_month(12, false), 334);
-        assert_eq!(days_before_month(12, true), 335);
-    }
-
-    // ========================================================================
-    // parse_wmi_datetime_to_iso tests
-    // ========================================================================
-
-    #[test]
-    fn test_parse_wmi_datetime_to_iso_valid() {
-        let wmi = "20241213123456.000000+000";
-        let iso = parse_wmi_datetime_to_iso(wmi);
-        assert_eq!(iso, "2024-12-13T12:34:56");
-    }
-
-    #[test]
-    fn test_parse_wmi_datetime_to_iso_short_input() {
-        let wmi = "2024";
-        let iso = parse_wmi_datetime_to_iso(wmi);
-        // Should return as-is when too short
-        assert_eq!(iso, "2024");
-    }
-
-    #[test]
-    fn test_parse_wmi_datetime_to_iso_midnight() {
-        let wmi = "20240101000000.000000+000";
-        let iso = parse_wmi_datetime_to_iso(wmi);
-        assert_eq!(iso, "2024-01-01T00:00:00");
+    fn install_date_is_utc_iso() {
+        assert_eq!(
+            install_date_iso(0x6823_885c).as_deref(),
+            Some("2025-05-13T17:58:52Z")
+        );
     }
 }

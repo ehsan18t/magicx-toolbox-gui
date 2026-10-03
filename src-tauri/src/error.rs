@@ -24,11 +24,17 @@ pub enum Error {
     #[error("Requires administrator privileges")]
     RequiresAdmin,
 
+    #[error("Administrator access was not granted, so the app keeps running as a standard user.")]
+    ElevationDeclined,
+
     #[error("Service control failed: {0}")]
     ServiceControl(String),
 
     #[error("Update error: {0}")]
     Update(String),
+
+    #[error("MagicX Toolbox cannot write to the folder it runs from, so it cannot update itself. Download the new version from the releases page and replace the exe yourself.")]
+    UpdateFolderReadOnly,
 
     #[error("A tweak or app is still being changed. Wait for it to finish, then {0}.")]
     ApplyInFlight(&'static str),
@@ -130,8 +136,10 @@ impl Error {
             Error::WindowsApi(_) => "WINDOWS_API_ERROR",
             Error::BackupFailed(_) => "BACKUP_FAILED",
             Error::RequiresAdmin => "REQUIRES_ADMIN",
+            Error::ElevationDeclined => "ELEVATION_DECLINED",
             Error::ServiceControl(_) => "SERVICE_CONTROL_FAILED",
             Error::Update(_) => "UPDATE_ERROR",
+            Error::UpdateFolderReadOnly => "UPDATE_FOLDER_READ_ONLY",
             Error::ApplyInFlight(_) => "APPLY_IN_FLIGHT",
             Error::CommandExecution(_) => "COMMAND_EXECUTION_FAILED",
             Error::NotFound(_) => "NOT_FOUND",
