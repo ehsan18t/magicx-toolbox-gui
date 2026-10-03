@@ -2,7 +2,7 @@ import type { ColumnTone, IconName } from "$lib/design";
 import type { EffectAgreement, RegistryChange, RegistryValueType, TweakEffectOption } from "$lib/types";
 import { capitalize } from "$lib/utils/format";
 
-export type ChangeKind = "registry" | "service" | "task" | "hosts" | "firewall";
+export type ChangeKind = "registry" | "service" | "task" | "hosts" | "firewall" | "power" | "audit";
 
 export const KIND_META: Record<ChangeKind, { label: string; icon: IconName }> = {
   registry: { label: "Registry", icon: "mdi:database" },
@@ -10,6 +10,8 @@ export const KIND_META: Record<ChangeKind, { label: string; icon: IconName }> = 
   task: { label: "Scheduled tasks", icon: "mdi:calendar" },
   hosts: { label: "Hosts file", icon: "mdi:file-document-outline" },
   firewall: { label: "Firewall", icon: "mdi:shield-outline" },
+  power: { label: "Power plan", icon: "mdi:power-plug-outline" },
+  audit: { label: "Audit policy", icon: "mdi:file-search-outline" },
 };
 
 export function optionTone(label: string, activeOption: string | null, pendingLabel?: string): ColumnTone | null {
@@ -45,10 +47,10 @@ const lastSegment = (path: string) => path.split("\\").filter(Boolean).at(-1) ??
 const humanize = (s: string) => capitalize(s.replaceAll("_", " "));
 
 function registryCell(c: RegistryChange): MatrixCell {
-  const note = c.windows_versions?.length ? `Win ${c.windows_versions.join(", ")}` : undefined;
-  if (c.action === "delete_value") return { text: "Not set", removal: true, note };
-  if (c.action === "delete_key") return { text: "Key removed", removal: true, note };
-  if (c.action === "create_key") return { text: "Key created", note };
+  const scope = c.windows_versions?.length ? { note: `Win ${c.windows_versions.join(", ")}` } : {};
+  if (c.action === "delete_value") return { text: "Not set", removal: true, ...scope };
+  if (c.action === "delete_key") return { text: "Key removed", removal: true, ...scope };
+  if (c.action === "create_key") return { text: "Key created", ...scope };
   const v = c.value;
   const text =
     v === null
@@ -60,7 +62,7 @@ function registryCell(c: RegistryChange): MatrixCell {
             ? '""'
             : v
           : JSON.stringify(v);
-  return { text, note };
+  return { text, ...scope };
 }
 
 interface MatrixEntry {
@@ -80,7 +82,7 @@ function matrixEntries(o: TweakEffectOption): MatrixEntry[] {
           title: isKey ? "(key)" : c.value_name || "(Default)",
           name: isKey ? lastSegment(c.key) : c.value_name,
           location: `${c.hive}\\${c.key}`,
-          type: isKey ? undefined : (c.value_type ?? undefined),
+          ...(!isKey && c.value_type !== null && { type: c.value_type }),
         },
         cell: registryCell(c),
       };
@@ -114,12 +116,22 @@ function matrixEntries(o: TweakEffectOption): MatrixEntry[] {
       cell:
         c.operation === "delete"
           ? { text: "Removed", removal: true }
-          : { text: [humanize(c.action ?? "block"), c.direction].filter(Boolean).join(" ") },
+          : { text: `${humanize(c.action)} ${c.direction}` },
+    })),
+    ...o.power_changes.map((c) => ({
+      key: `power:${c.subgroup}/${c.setting}`,
+      row: { kind: "power" as const, title: c.name, name: c.name, location: "Active power plan" },
+      cell: { text: `Plugged in ${c.ac}, on battery ${c.dc}` },
+    })),
+    ...o.audit_changes.map((c) => ({
+      key: `audit:${c.subcategory}:${c.event}`,
+      row: { kind: "audit" as const, title: c.name, name: c.name, location: "Advanced audit policy" },
+      cell: { text: c.audited ? "Audited" : "Not audited" },
     })),
   ];
 }
 
-const KIND_ORDER: ChangeKind[] = ["registry", "service", "task", "hosts", "firewall"];
+const KIND_ORDER: ChangeKind[] = ["registry", "service", "task", "hosts", "firewall", "power", "audit"];
 
 /** One row per setting any option touches, so options compare side by side. */
 export function buildMatrix(options: TweakEffectOption[], observed: TweakEffectOption | null): MatrixRow[] {

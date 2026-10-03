@@ -28,10 +28,10 @@
     /** The Details markdown; a match found only here shows as an excerpt. */
     info?: string | null;
     /** Highlight ranges; defaults to the page filter's. */
-    match?: SearchResult | null;
+    match?: SearchResult | undefined;
     stripe?: RowStripe | null;
     emphasis?: keyof typeof BORDER;
-    error?: string;
+    error?: string | undefined;
     ondismisserror: () => void;
     /** Mouse only: the row's Details action is its keyboard path. */
     onclick?: (e: MouseEvent) => void;
@@ -40,7 +40,7 @@
     notices?: Snippet;
     meta: Snippet;
     /** After the meta items, e.g. the category in search results. */
-    context?: Snippet;
+    context?: Snippet | undefined;
     actions: Snippet;
   }
 

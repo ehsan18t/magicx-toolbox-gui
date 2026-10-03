@@ -58,7 +58,7 @@
       sub: `of ${stats.total} tweaks`,
       icon: "mdi:check-circle",
       tone: "accent",
-      meter: stats.total ? { value: stats.applied, max: stats.total } : undefined,
+      ...(stats.total > 0 && { meter: { value: stats.applied, max: stats.total } }),
     },
     { label: "Needs attention", value: stats.attention, icon: "mdi:alert-circle", ...attentionTile },
     {

@@ -2,6 +2,7 @@
 // CSS classes (`animate-*`, `duration-*`, `ease-*`) for enter-only and hover motion; these presets where
 // Svelte must hold an element for its exit or measure its height.
 import { flip } from "svelte/animate";
+import { prefersReducedMotion } from "svelte/motion";
 import type { AnimationConfig } from "svelte/animate";
 import { slide, type EasingFunction, type TransitionConfig } from "svelte/transition";
 import { token } from "./cssToken";
@@ -18,7 +19,7 @@ interface MotionParams {
 
 // WAAPI-driven Svelte transitions ignore the CSS reduced-motion override, so each preset checks it.
 export function reducedMotion(): boolean {
-  return matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return prefersReducedMotion.current;
 }
 
 function ms(name: string): number {

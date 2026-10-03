@@ -1,4 +1,3 @@
-import { browser } from "$app/environment";
 import { logError, logWarning } from "$lib/utils/logger";
 
 /** A rune-backed value mirrored to localStorage as JSON. */
@@ -12,7 +11,6 @@ export class PersistentStore<T> {
   constructor(key: string, initialValue: T, parse: (stored: unknown) => T | undefined) {
     this.#key = key;
     this.#value = initialValue;
-    if (!browser) return;
 
     try {
       const stored = localStorage.getItem(key);
@@ -45,7 +43,6 @@ export class PersistentStore<T> {
 
   set value(newValue: T) {
     this.#value = newValue;
-    if (!browser) return;
     try {
       localStorage.setItem(this.#key, JSON.stringify(newValue));
     } catch (error) {

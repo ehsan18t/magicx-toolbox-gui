@@ -1,40 +1,14 @@
 import * as systemApi from "$lib/api/system";
 import { STORAGE_KEYS } from "$lib/config/app";
-import type { CachedSystemInfo, SystemInfo, WindowsInfo } from "$lib/types";
+import type { CachedSystemInfo, LiveSystemInfo, SystemInfo, SystemReading } from "$lib/types";
 import { errorMessage } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
+import { composeSystemInfo, firstPaint, parseSystemCache } from "$lib/utils/systemCache";
 import { toastStore } from "./toast.svelte";
 
-/** Stands in for the dynamic fields when only the cached hardware could be read. */
-const UNKNOWN_WINDOWS: WindowsInfo = {
-  version_string: "",
-  display_version: "",
-  build_number: "",
-  product_name: "Windows",
-  uptime_seconds: 0,
-  is_windows_11: false,
-  is_windows_server: false,
-  install_date: null,
-};
-
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-
-/** The shape systemInfoRows destructures: a cache from an older build would otherwise crash the render. */
-function parseCache(stored: unknown): CachedSystemInfo | null | undefined {
-  if (stored === null) return null;
-  if (!isObject(stored) || !isObject(stored.hardware) || !isObject(stored.device)) return undefined;
-  const { cpu, memory, motherboard, gpu, monitors, disks, network } = stored.hardware;
-  const valid =
-    typeof stored.computer_name === "string" &&
-    typeof stored.cachedAt === "string" &&
-    [cpu, memory, motherboard].every(isObject) &&
-    [gpu, monitors, disks, network].every(Array.isArray);
-  return valid ? (stored as CachedSystemInfo) : undefined;
-}
-
-// Hardware rarely changes, so it is cached across launches.
-const cache = new PersistentStore<CachedSystemInfo | null>(STORAGE_KEYS.systemInfoCache, null, parseCache);
+// The hardware read is slow WMI: the last good one paints at once, and every load rereads it behind.
+const cache = new PersistentStore<CachedSystemInfo | null>(STORAGE_KEYS.systemInfoCache, null, parseSystemCache);
 
 let info = $state<SystemInfo | null>(null);
 let isLoading = $state(true);
@@ -43,25 +17,28 @@ let loadError = $state<string | null>(null);
 
 const cachedAt = $derived(cache.value?.cachedAt ?? null);
 
-function updateCache(fresh: SystemInfo): void {
-  cache.value = {
-    hardware: fresh.hardware,
-    device: fresh.device,
-    computer_name: fresh.computer_name,
-    cachedAt: new Date().toISOString(),
-  };
+/** Shows a full reading and caches its hardware. */
+function adoptFull(reading: SystemReading): SystemInfo {
+  const machine = reading.machine;
+  if (!machine) throw new Error("The system info read returned no hardware.");
+  cache.value = { ...machine, cachedAt: new Date().toISOString() };
+  info = composeSystemInfo(reading.live, machine);
+  return info;
 }
 
-/** The cached hardware with the live dynamic fields, or placeholders when the live read failed. */
-function withCachedHardware(cached: CachedSystemInfo, live?: SystemInfo): SystemInfo {
-  return {
-    windows: live?.windows ?? UNKNOWN_WINDOWS,
-    username: live?.username ?? "",
-    is_admin: live?.is_admin ?? false,
-    hardware: cached.hardware,
-    device: cached.device,
-    computer_name: cached.computer_name,
-  };
+/** Rereads everything, hardware included; a failure is toasted and keeps what is shown. */
+async function refresh(): Promise<SystemInfo | null> {
+  isRefreshing = true;
+  try {
+    const fresh = adoptFull(await systemApi.getSystemInfo(true));
+    loadError = null;
+    return fresh;
+  } catch (error) {
+    toastStore.failure("Could not refresh system info", error, { withContext: true });
+    return null;
+  } finally {
+    isRefreshing = false;
+  }
 }
 
 export const systemStore = {
@@ -87,47 +64,30 @@ export const systemStore = {
     return cachedAt;
   },
 
-  /** Fresh dynamic info over the cached hardware; everything fresh when nothing is cached. */
+  /** The live fields over the cached hardware without waiting on WMI, then a full read behind it; with nothing cached, the full read is the load. */
   async load() {
     isLoading = true;
     loadError = null;
+    const cached = cache.value;
     try {
-      const cached = cache.value;
-      const fresh = await systemApi.getSystemInfo();
-      if (cached) {
-        info = withCachedHardware(cached, fresh);
-      } else {
-        info = fresh;
-        updateCache(fresh);
+      if (!cached) return adoptFull(await systemApi.getSystemInfo(true));
+      let live: LiveSystemInfo | null = null;
+      try {
+        live = (await systemApi.getSystemInfo(false)).live;
+      } catch (error) {
+        logError("Failed to read live system info", error);
       }
+      info = firstPaint(live, cached);
+      void refresh();
       return info;
     } catch (error) {
       logError("Failed to load system info", error);
-      if (!cache.value) {
-        loadError = errorMessage(error);
-        return null;
-      }
-      info = withCachedHardware(cache.value);
-      return info;
+      loadError = errorMessage(error);
+      return null;
     } finally {
       isLoading = false;
     }
   },
 
-  /** Re-reads everything, hardware included; a failure is toasted and keeps what is shown. */
-  async refresh() {
-    isRefreshing = true;
-    try {
-      const fresh = await systemApi.getSystemInfo();
-      info = fresh;
-      loadError = null;
-      updateCache(fresh);
-      return fresh;
-    } catch (error) {
-      toastStore.failure("Could not refresh system info", error, { withContext: true });
-      return null;
-    } finally {
-      isRefreshing = false;
-    }
-  },
+  refresh,
 };

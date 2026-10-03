@@ -1,5 +1,6 @@
-import { browser } from "$app/environment";
+import { setWindowBackground } from "$lib/api/system";
 import { STORAGE_KEYS } from "$lib/config/app";
+import { logError } from "$lib/utils/logger";
 import { duration } from "$lib/utils/motion";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 
@@ -14,10 +15,10 @@ let transitionTimer: ReturnType<typeof setTimeout> | undefined;
 
 function paint(theme: Theme) {
   document.documentElement.setAttribute("data-theme", theme);
+  setWindowBackground(theme === "dark").catch((error) => logError("Failed to set the window background", error));
 }
 
 function set(theme: Theme) {
-  if (!browser) return;
   const root = document.documentElement;
   root.classList.add("theme-transitioning");
   themeState.value = theme;
@@ -33,7 +34,6 @@ export const themeStore = {
   },
 
   init() {
-    if (!browser) return;
     if (!themeState.restored) {
       themeState.value = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }

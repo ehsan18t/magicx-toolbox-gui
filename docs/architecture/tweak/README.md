@@ -21,8 +21,8 @@ flowchart TB
     Commands["Command layer<br/>gates, locks, view types"]
     Catalog["Catalog<br/>the loaded corpus"]
     Engine["Engine<br/>detect, apply, rollback, restore"]
-    Kinds["Effect kinds<br/>registry, service, task,<br/>hosts, firewall, action"]
-    Primitives["Windows primitives<br/>registry API, SCM, Task Scheduler COM,<br/>hosts file, firewall, script runner"]
+    Kinds["Effect kinds<br/>registry, service, task, hosts,<br/>firewall, power setting, audit flag, action"]
+    Primitives["Windows primitives<br/>registry API, SCM, Task Scheduler COM, hosts file,<br/>firewall, power API, audit policy API, script runner"]
     Snapshots["Snapshot store<br/>history, Needs Attention, journal"]
     Claims["Shared claims store"]
     Broker["TrustedInstaller broker"]
@@ -87,9 +87,9 @@ Suggested reading order for someone new: this page, then corpus-and-build, detec
 | Tweak | One user-facing change, such as "Disable telemetry tasks". Has an id, a risk level, an elevation floor, a surface and options. |
 | Category | The group a tweak is listed under. Set once per YAML file. |
 | Surface | The list of effects a tweak manages. Every option describes the whole surface. |
-| Effect | One unit of change on the surface: a **Setting** (registry value, registry key, service startup type, scheduled task, hosts entry, firewall rule), a **Shared** reference to a shared setting, or an **Action** (a script with optional undo and probe). |
+| Effect | One unit of change on the surface: a **Setting** (registry value, registry key, service startup type, scheduled task, hosts entry, firewall rule, power plan setting, audit policy flag), a **Shared** reference to a shared setting, or an **Action** (a script with optional undo and probe). |
 | Option | A named state of the tweak: a value for every effect on its surface. One or two options show as a switch, three or more as a dropdown. |
-| Value | The one value type used everywhere: absent, missing, a typed registry value, a service startup type, a task enabled flag, or present/not present. |
+| Value | The one value type used everywhere: absent, missing, a typed registry value, a service startup type, a task enabled flag, present/not present, a power setting's AC and DC indexes, or an audit flag. |
 | System Default | A computed status, not an option: the live surface matches none of the authored options. It is never authored and never offered as a choice; restoring a value-dump entry can return the tweak to it. |
 | Unknown | The status when any part of the surface cannot be read (for example access denied). Often means "elevate to see". |
 | Unavailable | The tweak, or one option, has nothing to do on this Windows build or machine. |

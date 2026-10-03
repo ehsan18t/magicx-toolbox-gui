@@ -1,6 +1,6 @@
-# Tauri + SvelteKit Rust Backend Developer Guide
+# Tauri + Svelte Rust Backend Developer Guide
 
-This guide will help you understand and work with the Rust backend of this Tauri + SvelteKit starter template.
+This guide will help you understand and work with the Rust backend of this Tauri + Svelte starter template.
 
 ## 📁 Project Structure Overview
 
@@ -40,7 +40,8 @@ fn main() {
 **Key Points:**
 - The `windows_subsystem` attribute prevents a console window from appearing on Windows in release builds
 - `run_broker_if_requested` handles `--broker` in `argv[1]` (the TrustedInstaller child) before any GUI initialization
-- All the real work happens in `lib.rs`. `run()` first takes a per-session named mutex (`services/single_instance.rs`): a second launch brings the running window forward and exits, and a launch with `--after-restart` (Restart as administrator) waits for its predecessor to exit instead
+- All the real work happens in `lib.rs`. `run()` first takes a per-session named mutex (`services/single_instance.rs`): a second launch brings the running window forward and exits (a minimized window is restored, a hidden one still starting is left alone). The window is the Tauri window of another process running the same exe, or, for a renamed copy, the Tauri window titled MagicX Toolbox. A launch that finds no window waits up to 5 s for an exiting holder, then says in a message box that another copy is running. A relaunch passes `--after-restart=<pid>` (Restart as administrator, a portable update) and waits up to 30 s for that process to exit first, unless the PID now names a process younger than itself (reused); it never bypasses the mutex
+- `run()` then attaches the session log file before the Tauri Builder, so a failed window or setup is logged. Until the window first shows, a release-build panic also shows a message box with the cause, the log folder and, after an update, how to go back to the previous exe (`main_window.rs`). The log folder is `FOLDERID_LocalAppData`, as Tauri resolves it. The window starts hidden and shows on the first finished page load, failed navigations included
 
 ### 2. Core Application (`lib.rs`)
 
@@ -112,10 +113,8 @@ Handles one-time initialization when the app starts:
 
 ```rust
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    match app.path().app_local_data_dir() {
-        Ok(dir) => crate::logging::start(dir),
-        Err(e) => log::warn!("app data folder unavailable ({e}); logs stay in memory"),
-    }
+    crate::commands::update::remove_update_leftovers();
+    crate::main_window::track_busy(app.handle());
     let tweak_state = TweakEngineState::new()?;
     tweak_state.scan_startup_crash_residue();
     app.manage(tweak_state);
@@ -126,12 +125,14 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
 **Key Points:**
 - Only runs once when the application starts
-- The logger itself is installed earlier, first thing in `run()`, and keeps lines in memory until `logging::start` reads the logging settings and attaches the session file
+- The logger is installed first thing in `run()`, and `logging::start` attaches the session file before the Builder runs
+- A crash-residue scan that fails for a tweak is kept in memory and shown as Needs Attention until a retry, taken only while no apply holds that tweak, records it
+- `track_busy` names the in-flight change on the Windows shutdown screen while any tweak or app lock is held
 - Managed state (the tweak engine, app items) is created here
 
 ## 🚀 Working with Commands
 
-Commands are Rust functions that your SvelteKit frontend can call. They're defined in the `commands/` directory.
+Commands are Rust functions that your Svelte frontend can call. They're defined in the `commands/` directory.
 
 ### Creating a New Command
 
@@ -160,7 +161,7 @@ pub fn my_new_command(input: String, state: tauri::State<AppState>) -> Result<St
 ])
 ```
 
-**Step 3:** Call it from your SvelteKit frontend:
+**Step 3:** Call it from your Svelte frontend:
 
 ```typescript
 import { invoke } from '@tauri-apps/api/core';
@@ -248,7 +249,7 @@ pub fn get_theme(state: tauri::State<AppState>) -> Result<String> {
 
 ## 🔄 Frontend-Backend Communication
 
-### From SvelteKit to Rust
+### From Svelte to Rust
 
 Use the `invoke` function to call Rust commands:
 
@@ -413,5 +414,5 @@ pub enum Error {
 - [Rust Async Programming](https://rust-lang.github.io/async-book/) - Learn about async in Rust
 - [Serde Documentation](https://serde.rs/) - For data serialization
 - [thiserror Documentation](https://docs.rs/thiserror/) - For error handling
-- [SvelteKit Documentation](https://kit.svelte.dev/docs/introduction)
-- [SvelteKit Playground](https://svelte.dev/playground/hello-world)
+- [Svelte Documentation](https://svelte.dev/docs/svelte/overview)
+- [Svelte Playground](https://svelte.dev/playground/hello-world)

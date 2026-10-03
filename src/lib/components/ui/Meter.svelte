@@ -12,7 +12,7 @@
     max?: number;
     label: string;
     /** Stacked parts of `max` in place of the single bar, e.g. a breakdown by state. */
-    segments?: MeterSegment[];
+    segments?: MeterSegment[] | undefined;
     size?: keyof typeof HEIGHT;
     class?: string;
   }

@@ -4,7 +4,6 @@
 
 use crate::error::Error;
 use std::fs;
-use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -45,22 +44,6 @@ fn get_hosts_path() -> Result<PathBuf, Error> {
     Ok(crate::services::system32::system_dir()?.join(r"drivers\etc\hosts"))
 }
 
-/// Null-terminated UTF-16 encoding of a path, for the `PCWSTR` params the file-replace APIs take.
-/// Widens straight from `OsStr` (never through a lossy `&str`/`to_string_lossy` step), matching
-/// this codebase's existing `wide`/`to_wide_string` helpers (`service_control.rs`,
-/// `elevation/common.rs`) but path-typed since both inputs here are always `Path`s.
-fn wide_path(p: &Path) -> Vec<u16> {
-    p.as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect()
-}
-
-/// Null-terminated UTF-16 encoding of a plain string (the one privilege name this file widens).
-fn wide_str(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
 /// A call-unique (not just process-unique) temp filename in the hosts directory. Process id alone
 /// is not enough: spec invariant 25 makes batch operations per-tweak-independent, and `rayon`
 /// (already a dependency) means two threads in this one process can really call
@@ -99,7 +82,7 @@ impl Drop for SecurityCapture {
 /// contract (`replace_hosts_file_atomically`) is to fail closed on `None` for an existing file,
 /// never to proceed with an irreversible swap whose permission side effect it could not correct.
 fn capture_security(path: &Path) -> Option<SecurityCapture> {
-    let wide = wide_path(path);
+    let wide = crate::services::wide(path);
     let mut owner: PSID = ptr::null_mut();
     let mut dacl: *mut ACL = ptr::null_mut();
     let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
@@ -148,7 +131,7 @@ fn try_enable_restore_privilege() {
             return;
         }
 
-        let name = wide_str("SeRestorePrivilege");
+        let name = crate::services::wide("SeRestorePrivilege");
         let mut luid: LUID = std::mem::zeroed();
         if LookupPrivilegeValueW(ptr::null(), name.as_ptr(), &mut luid) == 0 {
             log::debug!(
@@ -186,7 +169,7 @@ fn try_enable_restore_privilege() {
 /// `replace_hosts_file_atomically`), so a failure here costs nothing — the real hosts file has not
 /// been touched yet, and the caller deletes the temp file and bails.
 fn apply_security(path: &Path, capture: &SecurityCapture) -> Result<(), Error> {
-    let wide = wide_path(path);
+    let wide = crate::services::wide(path);
     // SAFETY: `wide` is valid and NUL-terminated; `capture.owner`/`capture.dacl` are still valid
     // because `capture.sd` (which they point into) has not been freed yet.
     let err = unsafe {
@@ -334,8 +317,8 @@ fn replace_hosts_file_atomically(new_content: &str) -> Result<(), Error> {
         return Err(e);
     }
 
-    let replaced = wide_path(&hosts_path);
-    let replacement = wide_path(&tmp_path);
+    let replaced = crate::services::wide(&hosts_path);
+    let replacement = crate::services::wide(&tmp_path);
 
     let mut last_err = 0u32;
     for attempt in 1..=REPLACE_RETRY_ATTEMPTS {

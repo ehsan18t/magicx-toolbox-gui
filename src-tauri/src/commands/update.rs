@@ -1,10 +1,18 @@
-//! Update commands for checking and installing app updates from GitHub Releases
+//! Update commands: check GitHub Releases, then replace the running portable exe in place.
 
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::io::Read;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// The one asset a release ships: the portable exe an update swaps in.
+const PORTABLE_ASSET: &str = "magicx-toolbox.exe";
+
+fn is_portable_asset(name: &str) -> bool {
+    name.eq_ignore_ascii_case(PORTABLE_ASSET)
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitHubAsset {
@@ -29,6 +37,7 @@ pub struct GitHubRelease {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
     pub available: bool,
@@ -39,6 +48,7 @@ pub struct UpdateInfo {
     pub published_at: Option<String>,
     pub asset_name: Option<String>,
     pub asset_size: Option<u64>,
+    /// GitHub's `sha256:<hex>`; an update without one is not installed.
     pub asset_digest: Option<String>,
     /// The offered release is marked pre-release on GitHub.
     pub prerelease: bool,
@@ -62,10 +72,9 @@ impl UpdateInfo {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateConfig {
-    pub releases_api_url: String,
-    pub asset_pattern: String,
     /// Offer releases GitHub marks pre-release; off, only stable releases count.
     #[serde(default)]
     pub include_prereleases: bool,
@@ -151,15 +160,15 @@ fn is_newer_version(current: &str, latest: &str) -> bool {
     }
 }
 
-/// The newest published release, skipping drafts, and pre-releases unless they are wanted.
-/// A `-pre` tag counts as a pre-release even when GitHub's flag is unset.
+/// The newest published release that ships the portable exe, skipping drafts, and pre-releases
+/// unless they are wanted. A `-pre` tag counts as a pre-release even when GitHub's flag is unset.
 fn newest_release(
     releases: Vec<GitHubRelease>,
     include_prereleases: bool,
 ) -> Option<GitHubRelease> {
     releases
         .into_iter()
-        .filter(|r| !r.draft)
+        .filter(|r| !r.draft && portable_asset(&r.assets).is_some())
         .filter_map(|mut r| {
             let v = parse_version(&r.tag_name)?;
             r.prerelease |= !v.pre.is_empty();
@@ -187,7 +196,9 @@ fn check_for_update_in(current_version: String, config: UpdateConfig) -> Result<
         .into();
 
     // `/releases/latest` never returns a pre-release, so read the list and choose here.
-    let list_url = format!("{}?per_page={RELEASES_PER_PAGE}", config.releases_api_url);
+    let list_url = format!(
+        "https://api.github.com/repos/{RELEASE_REPO}/releases?per_page={RELEASES_PER_PAGE}"
+    );
     let mut response = agent
         .get(&list_url)
         .header("User-Agent", "MagicX-Toolbox-Updater")
@@ -238,15 +249,7 @@ fn check_for_update_in(current_version: String, config: UpdateConfig) -> Result<
 
     log::debug!("Latest release: {}", release.tag_name);
 
-    let asset_regex = regex_lite::Regex::new(&config.asset_pattern).map_err(|e| {
-        log::error!("Invalid asset pattern regex: {}", e);
-        Error::Update(format!("Invalid asset pattern: {}", e))
-    })?;
-
-    let matching_asset = release
-        .assets
-        .iter()
-        .find(|asset| asset_regex.is_match(&asset.name));
+    let matching_asset = portable_asset(&release.assets);
 
     let latest_version = strip_v_prefix(&release.tag_name).to_string();
     let is_update_available = is_newer_version(&current_version, &latest_version);
@@ -272,7 +275,11 @@ fn check_for_update_in(current_version: String, config: UpdateConfig) -> Result<
     })
 }
 
-/// The repository `releasesApiUrl` in `src/lib/config/app.ts` queries.
+fn portable_asset(assets: &[GitHubAsset]) -> Option<&GitHubAsset> {
+    assets.iter().find(|asset| is_portable_asset(&asset.name))
+}
+
+/// The one repository updates are read from and downloaded from.
 const RELEASE_REPO: &str = "ehsan18t/magicx-toolbox-gui";
 
 /// The whole URL must be `https://github.com/<RELEASE_REPO>/releases/download/<tag>/<asset_name>`: a
@@ -339,174 +346,181 @@ fn verify_digest(expected: &str, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-const STAGED_PREFIX: &str = "magicx-update-";
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadProgress {
+    pub downloaded: u64,
+    /// Bytes; `None` when the server sends no size.
+    pub total: Option<u64>,
+}
 
-/// Best effort: an installer still running from an earlier update holds its file open.
-fn remove_stale_installers(dir: &std::path::Path) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(e) => {
-            log::warn!("could not list earlier update files: {}", e.kind());
-            return;
+impl DownloadProgress {
+    fn percent(&self) -> Option<u64> {
+        self.total
+            .filter(|&total| total > 0)
+            .map(|total| (u128::from(self.downloaded) * 100 / u128::from(total)).min(100) as u64)
+    }
+}
+
+const UNKNOWN_SIZE_STEP: u64 = 256 * 1024;
+
+/// Reports a download only when its whole percent changes (with no known size, each 256 KiB).
+struct ProgressMeter {
+    now: DownloadProgress,
+    last_step: Option<u64>,
+}
+
+impl ProgressMeter {
+    fn new(total: Option<u64>) -> Self {
+        Self {
+            now: DownloadProgress {
+                downloaded: 0,
+                total,
+            },
+            last_step: None,
         }
-    };
-    for entry in entries.flatten() {
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .starts_with(STAGED_PREFIX)
-        {
-            discard_staged(&entry.path(), "earlier");
-        }
-    }
-}
-
-/// Logs `what`, never the path: a staged name is guarded only by being unguessable.
-fn discard_staged(path: &std::path::Path, what: &str) {
-    if let Err(e) = std::fs::remove_file(path) {
-        log::warn!("could not delete the {what} update file: {}", e.kind());
-    }
-}
-
-/// Written under an unguessable name, then re-opened read-only with writers and deleters denied and
-/// compared with the verified bytes. Holding that handle until the installer starts is what keeps
-/// the file that runs identical to the one checked.
-fn stage_installer(
-    dir: &std::path::Path,
-    bytes: &[u8],
-    asset_name: &str,
-) -> Result<(std::path::PathBuf, std::fs::File)> {
-    use std::io::Write;
-    use std::os::windows::fs::OpenOptionsExt;
-    use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
-
-    let io_err = |what: &str, e: std::io::Error| {
-        log::error!("Failed to {what} the update file: {e}");
-        Error::Update(format!("Failed to save update file: {e}"))
-    };
-    remove_stale_installers(dir);
-    let token =
-        crate::services::exclusive_temp::random_hex_token().map_err(|e| io_err("name", e))?;
-    let path = dir.join(format!("{STAGED_PREFIX}{token}-{asset_name}"));
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .share_mode(FILE_SHARE_READ)
-        .open(&path)
-        .map_err(|e| io_err("create", e))?;
-    let written = file.write_all(bytes);
-    drop(file);
-    if let Err(e) = written {
-        discard_staged(&path, "partial");
-        return Err(io_err("write", e));
     }
 
-    let mut held = std::fs::OpenOptions::new()
-        .read(true)
-        .share_mode(FILE_SHARE_READ)
-        .open(&path)
-        .map_err(|e| io_err("reopen", e))?;
-    let mut on_disk = Vec::with_capacity(bytes.len());
-    held.read_to_end(&mut on_disk)
-        .map_err(|e| io_err("read back", e))?;
-    if on_disk != bytes {
-        drop(held);
-        discard_staged(&path, "altered");
-        return Err(Error::Update(
-            "The update file changed on disk before it could be run".into(),
-        ));
+    fn advance(&mut self, read: u64) -> Option<DownloadProgress> {
+        self.now.downloaded = self.now.downloaded.saturating_add(read);
+        let step = self
+            .now
+            .percent()
+            .unwrap_or(self.now.downloaded / UNKNOWN_SIZE_STEP);
+        (self.last_step != Some(step)).then(|| {
+            self.last_step = Some(step);
+            self.now
+        })
     }
-    Ok((path, held))
-}
-
-// Windows opens the device for a reserved stem whatever the extension ("NUL.exe", "COM1 .msi").
-fn is_reserved_device(stem: &str) -> bool {
-    let b = stem.trim_end().as_bytes();
-    let numbered =
-        |p: &[u8]| b.len() == 4 && b[..3].eq_ignore_ascii_case(p) && b[3].is_ascii_digit();
-    ["CON", "PRN", "AUX", "NUL"]
-        .iter()
-        .any(|d| b.eq_ignore_ascii_case(d.as_bytes()))
-        || numbered(b"COM")
-        || numbered(b"LPT")
-}
-
-fn validate_asset_name(name: &str) -> Result<()> {
-    // ASCII only: bidi/zero-width characters disguise a name and superscript digits open COM¹.
-    // ':' is a drive prefix or an ADS; `join` replaces the whole base on "C:x.exe".
-    let allowed = |c: char| matches!(c, ' '..='~') && !r#"<>:"/\|?*"#.contains(c);
-    let stem = name.split('.').next().unwrap_or_default();
-    if name.contains("..") || !name.chars().all(allowed) || is_reserved_device(stem) {
-        log::error!("Rejected invalid asset name: {:?}", name);
-        return Err(Error::Update("Invalid asset name".into()));
-    }
-
-    let extension = std::path::Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
-
-    if !matches!(extension.to_lowercase().as_str(), "exe" | "msi") {
-        log::error!("Rejected unsupported file type: {}", extension);
-        return Err(Error::Update(
-            "Unsupported installer type. Only .exe and .msi files are allowed.".into(),
-        ));
-    }
-    Ok(())
 }
 
 #[tauri::command]
 pub async fn install_update(
+    app: tauri::AppHandle,
     download_url: String,
     asset_name: String,
     asset_digest: Option<String>,
+    asset_size: Option<u64>,
+    on_progress: tauri::ipc::Channel<DownloadProgress>,
 ) -> Result<()> {
-    tauri::async_runtime::spawn_blocking(move || {
+    let exe = std::env::current_exe()
+        .map_err(|e| Error::Update(format!("Could not find the running app: {e}")))?;
+    let host = app.clone();
+    let mut channel = Some(on_progress);
+    let report = move |progress: DownloadProgress| {
+        if let Some(Err(e)) = channel.as_ref().map(|c| c.send(progress)) {
+            log::warn!("update progress not delivered, no more will be sent: {e}");
+            channel = None;
+        }
+        if let Some(percent) = progress.percent() {
+            crate::taskbar::progress(&host, percent);
+        }
+    };
+    let saver = app.clone();
+    let exiter = app.clone();
+    let work = tauri::async_runtime::spawn_blocking(move || {
         install_update_in(
             crate::tweaks::engine::lifecycle::gate(),
-            download_url,
-            asset_name,
-            asset_digest,
+            &UpdatePaths::beside(exe),
+            Download {
+                url: download_url,
+                asset_name,
+                digest: asset_digest,
+                size: asset_size,
+            },
+            report,
+            || crate::window_state::save(&saver),
+            || exiter.exit(0),
         )
-    })
-    .await?
+    });
+    crate::taskbar::track(&app, async { work.await? }).await
+}
+
+struct Download {
+    url: String,
+    asset_name: String,
+    digest: Option<String>,
+    size: Option<u64>,
 }
 
 fn install_update_in(
     gate: &crate::tweaks::engine::lifecycle::ApplyGate,
-    download_url: String,
-    asset_name: String,
-    asset_digest: Option<String>,
+    paths: &UpdatePaths,
+    download: Download,
+    on_progress: impl FnMut(DownloadProgress),
+    before_launch: impl FnOnce(),
+    exit: impl FnOnce(),
 ) -> Result<()> {
-    log::info!("Starting update download: {:?}", asset_name);
+    log::info!("Starting update download: {:?}", download.asset_name);
 
-    // Latched through the download and kept once the installer runs, until the frontend exits: the
-    // broker spawns current_exe(), so no apply may run while the installer replaces this executable.
+    // Latched through the download and kept until exit: the broker spawns current_exe(), so no
+    // apply may run while that file is being replaced.
     let latch = gate
         .begin_exit()
         .map_err(|refused| Error::exit_refused(refused, "install the update"))?;
 
-    validate_asset_name(&asset_name)?;
-    if !is_trusted_download_url(&download_url, &asset_name) {
-        log::error!("Rejected untrusted download URL: {:?}", download_url);
+    if !is_portable_asset(&download.asset_name) {
+        log::error!("Rejected asset: {:?}", download.asset_name);
+        return Err(Error::Update(
+            "The release file is not the app's portable exe".into(),
+        ));
+    }
+    if !is_trusted_download_url(&download.url, &download.asset_name) {
+        log::error!("Rejected untrusted download URL: {:?}", download.url);
         return Err(Error::Update(
             "Download URL is not from a trusted source. Updates must come from the official GitHub repository.".into()
         ));
     }
-    let Some(asset_digest) = asset_digest else {
+    let Some(digest) = download.digest else {
         return Err(Error::Update(
             "The release publishes no checksum for this file, so it cannot be verified".into(),
         ));
     };
 
-    // Download the file. ureq returns Err on a non-2xx status, so a failed download is caught here.
+    // Created before the download, so a folder the app cannot write to fails at once.
+    let file =
+        std::fs::File::create(&paths.staged).map_err(|e| fs_error("create the update file", &e))?;
+    let staged = fetch(&download.url, download.size, on_progress).and_then(|bytes| {
+        verify_digest(&digest, &bytes)?;
+        write_staged(file, &bytes)
+    });
+    if let Err(e) = staged {
+        discard(&paths.staged);
+        return Err(e);
+    }
+
+    log::info!("Download verified, replacing the app");
+    before_launch();
+    let dir = paths.exe.parent().unwrap_or(Path::new("."));
+    replace_and_launch(paths, |exe| {
+        // Without it the new instance yields to this one's single-instance mutex.
+        Command::new(exe)
+            .arg(crate::services::single_instance::after_restart_arg())
+            .current_dir(dir)
+            .spawn()
+            .map(drop)
+    })?;
+    log::info!("Updated app started, exiting this instance");
+    // `exit` only queues the exit, so the latch must outlive this command.
+    latch.keep_until_exit();
+    exit();
+    Ok(())
+}
+
+fn fetch(
+    url: &str,
+    size: Option<u64>,
+    mut on_progress: impl FnMut(DownloadProgress),
+) -> Result<Vec<u8>> {
+    // ureq returns Err on a non-2xx status, so a failed download is caught here.
     let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_global(Some(std::time::Duration::from_secs(300)))
+        .timeout_global(Some(download_budget(size)))
         .build()
         .into();
 
     let response = agent
-        .get(&download_url)
+        .get(url)
         .header("User-Agent", "MagicX-Toolbox-Updater")
         .call()
         .map_err(|e| {
@@ -514,63 +528,211 @@ fn install_update_in(
             Error::Update(format!("Failed to download update: {}", e))
         })?;
 
+    let body = response.into_body();
+    let mut meter = ProgressMeter::new(body.content_length().or(size));
+    // `into_reader` is unbounded; `read_to_vec` would cap the exe at 10 MB.
+    let mut reader = body.into_reader();
     let mut bytes = Vec::new();
-    // `into_reader` is unbounded; `read_to_vec` would cap an installer at 10 MB.
-    response
-        .into_body()
-        .into_reader()
-        .read_to_end(&mut bytes)
-        .map_err(|e| {
-            log::error!("Failed to read download: {}", e);
-            Error::Update(format!("Failed to read downloaded data: {}", e))
-        })?;
+    let mut chunk = vec![0u8; 64 * 1024];
+    if let Some(progress) = meter.advance(0) {
+        on_progress(progress);
+    }
+    loop {
+        let read = match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => {
+                log::error!("Failed to read download: {}", e);
+                return Err(Error::Update(format!(
+                    "Failed to read downloaded data: {}",
+                    e
+                )));
+            }
+        };
+        bytes.extend_from_slice(&chunk[..read]);
+        if let Some(progress) = meter.advance(read as u64) {
+            on_progress(progress);
+        }
+    }
+    Ok(bytes)
+}
 
-    verify_digest(&asset_digest, &bytes)?;
-    let (download_path, held) = stage_installer(&std::env::temp_dir(), &bytes, &asset_name)?;
+// Scaled to the size, not an idle timeout: ureq offers those only through its unstable `unversioned` API.
+fn download_budget(size: Option<u64>) -> std::time::Duration {
+    const MIN_BYTES_PER_SEC: u64 = 16 * 1024;
+    const FLOOR_SECS: u64 = 300;
+    const UNKNOWN_SIZE_SECS: u64 = 1800;
+    std::time::Duration::from_secs(size.map_or(UNKNOWN_SIZE_SECS, |s| {
+        (s / MIN_BYTES_PER_SEC).max(FLOOR_SECS)
+    }))
+}
 
-    log::info!("Download verified, launching installer...");
+/// The running exe and its two siblings. Kept in one folder so both renames stay on one volume.
+#[derive(Debug)]
+struct UpdatePaths {
+    exe: PathBuf,
+    /// The verified download, before it takes the exe's name.
+    staged: PathBuf,
+    /// The replaced exe, deleted at the next start.
+    old: PathBuf,
+}
 
-    let extension = download_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+impl UpdatePaths {
+    fn beside(exe: PathBuf) -> Self {
+        let sibling = |suffix: &str| {
+            let mut name = exe.clone().into_os_string();
+            name.push(suffix);
+            PathBuf::from(name)
+        };
+        Self {
+            staged: sibling(".new"),
+            old: sibling(".old"),
+            exe,
+        }
+    }
+}
 
-    let result = if extension.eq_ignore_ascii_case("msi") {
-        crate::services::system32::SystemTool::Msiexec
-            .command()
-            .map_err(|e| std::io::Error::other(e.to_string()))
-            .and_then(|mut msiexec| {
-                msiexec
-                    .arg("/i")
-                    .arg(&download_path)
-                    .arg("/passive")
-                    .spawn()
-            })
+const ERROR_WRITE_PROTECT: i32 = 19;
+
+fn fs_error(what: &str, e: &std::io::Error) -> Error {
+    log::error!("Failed to {what}: {e}");
+    if e.kind() == std::io::ErrorKind::PermissionDenied
+        || e.raw_os_error() == Some(ERROR_WRITE_PROTECT)
+    {
+        Error::UpdateFolderReadOnly
     } else {
-        // A portable build is the app itself: without this it yields to this instance's mutex.
-        Command::new(&download_path)
-            .arg(crate::services::single_instance::AFTER_RESTART_ARG)
-            .spawn()
-    };
+        Error::Update(format!("Could not {what}: {e}"))
+    }
+}
 
-    match result {
-        Ok(_) => {
-            log::info!("Installer launched successfully");
-            // msiexec opens the package after spawn returns; the OS closes this handle at exit.
-            std::mem::forget(held);
-            latch.keep_until_exit();
-            Ok(())
+/// Logs the failure, never the path.
+fn discard(path: &Path) {
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            log::warn!("could not delete the update file: {}", e.kind());
+        }
+        _ => {}
+    }
+}
+
+// No hold-open guard against a swap after the write: whoever can write this folder can already
+// replace the exe itself.
+fn write_staged(mut file: std::fs::File, bytes: &[u8]) -> Result<()> {
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(|e| fs_error("save the update", &e))
+}
+
+/// Moves the running exe aside and the staged file into its place, then starts it. Any failure
+/// puts the previous exe back and discards the staged file before returning.
+fn replace_and_launch(
+    paths: &UpdatePaths,
+    launch: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<()> {
+    // A stale or locked `.old` would fail the rename below as if the folder were read-only.
+    match std::fs::remove_file(&paths.old) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            discard(&paths.staged);
+            log::error!("Failed to remove the previous update's leftover: {e}");
+            return Err(Error::Update(format!(
+                "{} is left over from the last update and could not be removed ({e}). Delete it, then try again.",
+                file_name(&paths.old)
+            )));
+        }
+        _ => {}
+    }
+    // Two renames, not one replace: Windows renames a running exe but will not overwrite it
+    // (MOVEFILE_REPLACE_EXISTING fails on a mapped image). Nothing runs between the two.
+    if let Err(e) = std::fs::rename(&paths.exe, &paths.old) {
+        discard(&paths.staged);
+        return Err(fs_error("move the running app aside", &e));
+    }
+    if let Err(e) = std::fs::rename(&paths.staged, &paths.exe) {
+        return Err(roll_back(paths, fs_error("move the update into place", &e)));
+    }
+    if let Err(e) = launch(&paths.exe) {
+        log::error!("Failed to start the updated app: {e}");
+        return Err(roll_back(
+            paths,
+            Error::Update(format!("Could not start the updated app: {e}")),
+        ));
+    }
+    Ok(())
+}
+
+/// `cause` when the previous exe is back in place; otherwise an error saying how to restore it.
+fn roll_back(paths: &UpdatePaths, cause: Error) -> Error {
+    match std::fs::rename(&paths.old, &paths.exe) {
+        Ok(()) => {
+            discard(&paths.staged);
+            cause
         }
         Err(e) => {
-            log::error!("Failed to launch installer: {}", e);
-            Err(Error::Update(format!("Failed to launch installer: {}", e)))
+            log::error!("Failed to restore the previous app after a failed update: {e}");
+            Error::Update(format!(
+                "The update failed and the previous version could not be put back ({e}). Rename {} to {} to restore it.",
+                file_name(&paths.old),
+                file_name(&paths.exe)
+            ))
         }
+    }
+}
+
+fn file_name(p: &Path) -> String {
+    p.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// For a startup failure report: how to go back to the version the last update replaced.
+pub fn previous_version_hint() -> Option<String> {
+    let paths = UpdatePaths::beside(std::env::current_exe().ok()?);
+    paths.old.is_file().then(|| {
+        format!(
+            "The previous version is still at {}. To go back to it, delete {} and rename {} to {}.",
+            paths.old.display(),
+            file_name(&paths.exe),
+            file_name(&paths.old),
+            file_name(&paths.exe)
+        )
+    })
+}
+
+/// Deletes the exe an update replaced, and any interrupted download. Called once the window has
+/// shown, so a release that cannot start keeps the version to go back to.
+pub fn remove_update_leftovers() {
+    match std::env::current_exe() {
+        Ok(exe) => remove_leftovers(&UpdatePaths::beside(exe)),
+        Err(e) => log::warn!("could not look for files left by an update: {e}"),
+    }
+}
+
+/// One attempt; a file still held is retried at the next start.
+fn remove_leftovers(paths: &UpdatePaths) {
+    discard(&paths.staged);
+    match std::fs::remove_file(&paths.old) {
+        Ok(()) => log::info!("Removed the app version replaced by the last update"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => log::warn!(
+            "could not delete the replaced app version, will retry next start: {}",
+            e.kind()
+        ),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn download_budget_scales_with_size_above_a_floor() {
+        let secs = |size| download_budget(size).as_secs();
+        assert_eq!(secs(Some(1024)), 300);
+        assert_eq!(secs(Some(16 * 1024 * 600)), 600);
+        assert_eq!(secs(None), 1800);
+    }
 
     fn core(v: &str) -> Option<(u64, u64, u64)> {
         parse_version(v).map(|v| v.core)
@@ -645,10 +807,22 @@ mod tests {
             tag_name: tag.into(),
             body: None,
             published_at: None,
-            assets: Vec::new(),
+            assets: vec![asset(PORTABLE_ASSET)],
             prerelease,
             draft,
         }
+    }
+
+    #[test]
+    fn a_release_without_the_portable_exe_is_never_offered() {
+        let bare = GitHubRelease {
+            assets: vec![asset("magicx-toolbox-setup.msi")],
+            ..release("v3.2.0", false, false)
+        };
+        assert_eq!(
+            newest_release(vec![release("v3.0.0", false, false), bare], false).map(|r| r.tag_name),
+            Some("v3.0.0".into())
+        );
     }
 
     #[test]
@@ -724,51 +898,45 @@ mod tests {
         assert!(is_newer_version("v3.0.0", "3.1.0"));
     }
 
-    #[test]
-    fn bare_installer_names_are_accepted() {
-        for name in [
-            "x.exe",
-            "MagicX-Toolbox_3.1.0_x64-setup.exe",
-            "App 3.1.0.MSI",
-            "x.ExE",
-            "CONSOLE.exe",
-            "NULL.exe",
-            "COM10.exe",
-            "LPTX.msi",
-        ] {
-            assert!(validate_asset_name(name).is_ok(), "{name}");
+    fn asset(name: &str) -> GitHubAsset {
+        GitHubAsset {
+            name: name.into(),
+            browser_download_url: String::new(),
+            size: 0,
+            digest: None,
         }
     }
 
     #[test]
-    fn device_and_disguised_names_are_rejected() {
-        for name in [
-            "x.exe.",
-            "x.exe ",
-            ".exe",
-            "NUL.exe",
-            "con.exe",
-            "Prn.msi",
-            "AUX.exe",
-            "COM0.exe",
-            "com1.exe",
-            "LPT1.msi",
-            "lpt9.exe",
-            "NUL .exe",
-            "CON.tar.exe",
-            "COM\u{b9}.exe",
-            "LPT\u{b2}.msi",
-            "COM\u{b3}.exe",
-            "x\u{202e}exe.msi",
-            "x\u{200b}.exe",
-            "x\u{feff}.exe",
-            "\u{e9}.exe",
-        ] {
-            assert!(
-                matches!(validate_asset_name(name), Err(Error::Update(_))),
-                "{name:?} accepted"
-            );
+    fn only_the_portable_exe_is_offered() {
+        for name in ["magicx-toolbox.exe", "MagicX-Toolbox.EXE"] {
+            assert!(is_portable_asset(name), "{name} rejected");
         }
+        for name in [
+            "",
+            "magicx-toolbox",
+            "magicx-toolbox.exe.sha256",
+            "magicx-toolbox.exe ",
+            "magicx-toolbox.msi",
+            "magicx_toolbox.exe",
+            "MagicX-Toolbox_3.1.0_x64-setup.exe",
+            "MagicX-Toolbox_3.1.0_x64_en-US.msi",
+            "old-magicx-toolbox.exe",
+            r"..\magicx-toolbox.exe",
+            "sub/magicx-toolbox.exe",
+            "magicx-toolbox.exe:stream",
+        ] {
+            assert!(!is_portable_asset(name), "{name:?} accepted");
+        }
+        let assets = [
+            asset("MagicX-Toolbox_3.1.0_x64-setup.exe"),
+            asset("Magicx-Toolbox.exe"),
+        ];
+        assert_eq!(
+            portable_asset(&assets).map(|a| a.name.as_str()),
+            Some("Magicx-Toolbox.exe")
+        );
+        assert!(portable_asset(&assets[..1]).is_none());
     }
 
     #[test]
@@ -808,87 +976,189 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_frontends_inline_case_flag_matches_any_case() {
-        let pattern = regex_lite::Regex::new(r"(?i)MagicX[-_]Toolbox.*x64.*\.(exe|msi)$").unwrap();
-        assert!(pattern.is_match("magicx-toolbox_3.1.0_X64-setup.EXE"));
-        assert!(!pattern.is_match("MagicX-Toolbox_3.1.0_arm64.msi"));
+    /// A temp folder holding `magicx-toolbox.exe` ("old") and its staged update ("new").
+    fn staged_update() -> (tempfile::TempDir, UpdatePaths) {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::beside(dir.path().join(PORTABLE_ASSET));
+        std::fs::write(&paths.exe, b"old").unwrap();
+        std::fs::write(&paths.staged, b"new").unwrap();
+        (dir, paths)
     }
 
     #[test]
-    fn a_staged_installer_cannot_be_rewritten_while_held() {
-        const ERROR_SHARING_VIOLATION: i32 = 32;
-        let dir = tempfile::tempdir().unwrap();
-        let (path, held) = stage_installer(dir.path(), b"payload", "x.exe").unwrap();
-        assert_eq!(std::fs::read(&path).unwrap(), b"payload");
-        let err = std::fs::OpenOptions::new()
-            .write(true)
-            .open(&path)
-            .expect_err("no writer while the installer is held");
-        assert_eq!(err.raw_os_error(), Some(ERROR_SHARING_VIOLATION));
-        drop(held);
+    fn siblings_keep_the_exe_name() {
+        let paths = UpdatePaths::beside(PathBuf::from(r"D:\Tools\MagicX.exe"));
+        assert_eq!(paths.staged, PathBuf::from(r"D:\Tools\MagicX.exe.new"));
+        assert_eq!(paths.old, PathBuf::from(r"D:\Tools\MagicX.exe.old"));
     }
 
     #[test]
-    fn staging_clears_earlier_installers_and_nothing_else() {
+    fn a_swap_puts_the_update_in_place_and_keeps_the_old_exe_aside() {
+        let (_dir, paths) = staged_update();
+        let mut launched = None;
+        replace_and_launch(&paths, |exe| {
+            launched = Some(std::fs::read(exe)?);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(launched.as_deref(), Some(&b"new"[..]));
+        assert_eq!(std::fs::read(&paths.exe).unwrap(), b"new");
+        assert_eq!(std::fs::read(&paths.old).unwrap(), b"old");
+        assert!(!paths.staged.exists());
+    }
+
+    #[test]
+    fn a_failed_launch_puts_the_previous_exe_back() {
+        let (_dir, paths) = staged_update();
+        let result = replace_and_launch(&paths, |_| Err(std::io::Error::other("no")));
+        assert!(matches!(result, Err(Error::Update(_))), "got {result:?}");
+        assert_eq!(std::fs::read(&paths.exe).unwrap(), b"old");
+        assert!(!paths.old.exists());
+        assert!(!paths.staged.exists());
+    }
+
+    #[test]
+    fn a_failed_move_into_place_puts_the_previous_exe_back() {
+        let (_dir, paths) = staged_update();
+        std::fs::remove_file(&paths.staged).unwrap();
+        let result = replace_and_launch(&paths, |_| panic!("nothing to launch"));
+        assert!(matches!(result, Err(Error::Update(_))), "got {result:?}");
+        assert_eq!(std::fs::read(&paths.exe).unwrap(), b"old");
+        assert!(!paths.old.exists());
+    }
+
+    #[test]
+    fn a_running_exe_can_be_replaced() {
         let dir = tempfile::tempdir().unwrap();
-        let stale = dir.path().join(format!("{STAGED_PREFIX}0123-x.exe"));
-        let unrelated = dir.path().join("keep.exe");
-        std::fs::write(&stale, b"old").unwrap();
-        std::fs::write(&unrelated, b"other").unwrap();
-        let (path, held) = stage_installer(dir.path(), b"new", "x.exe").unwrap();
-        assert!(!stale.exists(), "an earlier installer was left behind");
+        let paths = UpdatePaths::beside(dir.path().join("cmd.exe"));
+        let system = crate::services::system32::system_dir().unwrap();
+        std::fs::copy(system.join("cmd.exe"), &paths.exe).unwrap();
+        std::fs::write(&paths.staged, b"new").unwrap();
+        let mut running = Command::new(&paths.exe)
+            .args(["/d", "/c", "ping", "-n", "5", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let swapped = replace_and_launch(&paths, |_| Ok(()));
+        running.kill().unwrap();
+        running.wait().unwrap();
+        swapped.unwrap();
+        assert_eq!(std::fs::read(&paths.exe).unwrap(), b"new");
+        assert!(paths.old.exists());
+    }
+
+    #[test]
+    fn leftovers_are_removed_and_nothing_else() {
+        let (dir, paths) = staged_update();
+        std::fs::write(&paths.old, b"older").unwrap();
+        let unrelated = dir.path().join("snapshots.json");
+        std::fs::write(&unrelated, b"keep").unwrap();
+        remove_leftovers(&paths);
+        assert!(!paths.old.exists());
+        assert!(!paths.staged.exists());
+        assert_eq!(std::fs::read(&paths.exe).unwrap(), b"old");
         assert!(unrelated.exists());
-        assert_eq!(std::fs::read(&path).unwrap(), b"new");
-        drop(held);
+        remove_leftovers(&paths);
     }
 
     #[test]
-    fn non_bare_asset_names_are_rejected() {
-        for name in [
-            "",
-            r"C:\x.exe",
-            "/x.exe",
-            r"..\x.exe",
-            "..",
-            "sub/x.exe",
-            r"sub\x.exe",
-            "C:x.exe",
-            r"\\server\share\x.exe",
-            r"\\?\C:\x.exe",
-            "x.exe:stream",
-            "a.txt:s.exe",
-            "x<.exe",
-            "x|.exe",
-            "x?.exe",
-            "x*.exe",
-            "x\".exe",
-            "x>.exe",
-            "x\u{1}.exe",
-            "x.zip",
-        ] {
+    fn a_stale_previous_exe_is_replaced_by_the_swap() {
+        let (_dir, paths) = staged_update();
+        std::fs::write(&paths.old, b"older").unwrap();
+        replace_and_launch(&paths, |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read(&paths.old).unwrap(), b"old");
+        assert_eq!(std::fs::read(&paths.exe).unwrap(), b"new");
+    }
+
+    #[test]
+    fn a_previous_exe_that_cannot_be_removed_is_named_and_the_download_discarded() {
+        let (_dir, paths) = staged_update();
+        std::fs::create_dir(&paths.old).unwrap();
+        std::fs::write(paths.old.join("held"), b"x").unwrap();
+        let result = replace_and_launch(&paths, |_| panic!("nothing to launch"));
+        assert!(
+            matches!(&result, Err(Error::Update(m)) if m.contains("magicx-toolbox.exe.old")),
+            "got {result:?}"
+        );
+        assert_eq!(std::fs::read(&paths.exe).unwrap(), b"old");
+        assert!(!paths.staged.exists());
+    }
+
+    #[test]
+    fn a_folder_the_app_cannot_write_is_its_own_error() {
+        const ERROR_ACCESS_DENIED: i32 = 5;
+        for code in [ERROR_ACCESS_DENIED, ERROR_WRITE_PROTECT] {
+            let e = std::io::Error::from_raw_os_error(code);
             assert!(
-                matches!(validate_asset_name(name), Err(Error::Update(_))),
-                "{name:?} accepted"
+                matches!(fs_error("x", &e), Error::UpdateFolderReadOnly),
+                "{code}"
             );
+        }
+        let full = std::io::Error::from_raw_os_error(112);
+        assert!(matches!(fs_error("x", &full), Error::Update(_)));
+    }
+
+    #[test]
+    fn an_unwritable_folder_fails_before_the_download() {
+        let gate = crate::tweaks::engine::lifecycle::ApplyGate::default();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = UpdatePaths::beside(dir.path().join("missing").join(PORTABLE_ASSET));
+        let result = install_update_in(
+            &gate,
+            &paths,
+            download(
+                &format!("https://github.com/{RELEASE_REPO}/releases/download/v1/{PORTABLE_ASSET}"),
+                PORTABLE_ASSET,
+                Some("sha256:00"),
+            ),
+            |_| panic!("no download may start"),
+            || {},
+            || {},
+        );
+        assert!(result.is_err(), "got {result:?}");
+    }
+
+    fn download(url: &str, name: &str, digest: Option<&str>) -> Download {
+        Download {
+            url: url.into(),
+            asset_name: name.into(),
+            digest: digest.map(str::to_string),
+            size: None,
         }
     }
 
     #[tokio::test]
     async fn rejected_install_leaves_the_latch_released() {
         let gate = crate::tweaks::engine::lifecycle::ApplyGate::default();
-        let ok = format!("https://github.com/{RELEASE_REPO}/releases/download/v1/x.exe");
+        let (_dir, paths) = staged_update();
+        let base = format!("https://github.com/{RELEASE_REPO}/releases/download/v1");
+        let ok = format!("{base}/{PORTABLE_ASSET}");
+        let setup = format!("{base}/MagicX-Toolbox_3.1.0_x64-setup.exe");
         for (url, name, digest) in [
-            ("https://example.com/x.exe", "x.exe", Some("sha256:00")),
-            (ok.as_str(), "..\\x.exe", Some("sha256:00")),
-            (ok.as_str(), "C:x.exe", Some("sha256:00")),
-            (ok.as_str(), "x.zip", Some("sha256:00")),
-            (ok.as_str(), "x.exe", None),
+            (
+                "https://example.com/magicx-toolbox.exe",
+                PORTABLE_ASSET,
+                Some("sha256:00"),
+            ),
+            (ok.as_str(), r"..\magicx-toolbox.exe", Some("sha256:00")),
+            (
+                setup.as_str(),
+                "MagicX-Toolbox_3.1.0_x64-setup.exe",
+                Some("sha256:00"),
+            ),
+            (ok.as_str(), PORTABLE_ASSET, None),
         ] {
-            let result =
-                install_update_in(&gate, url.into(), name.into(), digest.map(str::to_string));
+            let result = install_update_in(
+                &gate,
+                &paths,
+                download(url, name, digest),
+                |_| {},
+                || {},
+                || panic!("a rejected update never exits"),
+            );
             assert!(matches!(result, Err(Error::Update(_))), "got {result:?}");
         }
+        assert_eq!(std::fs::read(&paths.exe).unwrap(), b"old");
         drop(
             gate.begin_exit()
                 .expect("latch released after every rejection"),
@@ -902,13 +1172,53 @@ mod tests {
         let _guard = gate.lock_tweak("t").await.expect("no exit pending");
         let result = install_update_in(
             &gate,
-            "https://example.com/x.exe".into(),
-            "x.exe".into(),
-            None,
+            &UpdatePaths::beside(PathBuf::from(PORTABLE_ASSET)),
+            download("https://example.com/x.exe", "x.exe", None),
+            |_| {},
+            || {},
+            || {},
         );
         assert!(
             matches!(result, Err(Error::ApplyInFlight(_))),
             "got {result:?}"
+        );
+    }
+
+    #[test]
+    fn percent_is_known_only_with_a_size() {
+        let at = |downloaded, total| DownloadProgress { downloaded, total }.percent();
+        assert_eq!(at(50, Some(200)), Some(25));
+        assert_eq!(at(300, Some(200)), Some(100));
+        assert_eq!(at(199, Some(200)), Some(99), "floored, never rounded up");
+        assert_eq!(at(u64::MAX, Some(u64::MAX)), Some(100));
+        assert_eq!(at(10, Some(0)), None);
+        assert_eq!(at(10, None), None);
+    }
+
+    #[test]
+    fn the_meter_reports_each_whole_percent_once() {
+        let mut meter = ProgressMeter::new(Some(1000));
+        assert_eq!(
+            meter.advance(0),
+            Some(DownloadProgress {
+                downloaded: 0,
+                total: Some(1000)
+            })
+        );
+        assert_eq!(meter.advance(5), None);
+        assert_eq!(meter.advance(5).map(|p| p.downloaded), Some(10));
+        assert_eq!(meter.advance(990).and_then(|p| p.percent()), Some(100));
+        assert_eq!(meter.advance(0), None);
+    }
+
+    #[test]
+    fn without_a_size_the_meter_reports_each_step() {
+        let mut meter = ProgressMeter::new(None);
+        assert!(meter.advance(0).is_some());
+        assert_eq!(meter.advance(UNKNOWN_SIZE_STEP - 1), None);
+        assert_eq!(
+            meter.advance(1).map(|p| p.downloaded),
+            Some(UNKNOWN_SIZE_STEP)
         );
     }
 }

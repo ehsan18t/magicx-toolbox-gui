@@ -6,7 +6,7 @@
   interface Props {
     title: string;
     icon: IconName;
-    class?: string;
+    class?: string | undefined;
     children: Snippet;
   }
 

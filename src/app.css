@@ -3,6 +3,24 @@
 /* An aria-disabled control (focusable, with its reason) reacts no more than a natively disabled one. */
 @custom-variant enabled (&:enabled:not([aria-disabled="true"]));
 
+/* Scroll-state container queries exist from Chromium 133. */
+@custom-variant scroll-state {
+  @supports (container-type: scroll-state) {
+    @slot;
+  }
+}
+/* Inside a scroll-state-container: content hidden above / below. */
+@custom-variant scrollable-top {
+  @container scroll-state(scrollable: top) {
+    @slot;
+  }
+}
+@custom-variant scrollable-bottom {
+  @container scroll-state(scrollable: bottom) {
+    @slot;
+  }
+}
+
 @layer base {
   /* Navy neutrals; dark is the default theme. Layers lighten upward: base, content, card. */
   :root,
@@ -125,7 +143,7 @@
   }
 
   :root {
-    /* Picker swatches, one fixed tone per scheme whatever the theme; app.html mirrors them for first paint. */
+    /* Picker swatches, one fixed tone per scheme whatever the theme; index.html mirrors them for first paint. */
     --swatch-purple: #8b5cf6;
     --swatch-blue: #3b82f6;
     --swatch-green: #10b981;
@@ -173,22 +191,20 @@
   }
 
   /* <details> opens and closes with the expand timing; interpolate-size lets height reach `auto`. */
-  @supports (interpolate-size: allow-keywords) {
-    :root {
-      interpolate-size: allow-keywords;
-    }
+  :root {
+    interpolate-size: allow-keywords;
+  }
 
-    details::details-content {
-      block-size: 0;
-      overflow-y: clip;
-      transition:
-        block-size var(--transition-duration-normal) var(--ease-out),
-        content-visibility var(--transition-duration-normal) allow-discrete;
-    }
+  details::details-content {
+    block-size: 0;
+    overflow-y: clip;
+    transition:
+      block-size var(--transition-duration-normal) var(--ease-out),
+      content-visibility var(--transition-duration-normal) allow-discrete;
+  }
 
-    details[open]::details-content {
-      block-size: auto;
-    }
+  details[open]::details-content {
+    block-size: auto;
   }
 
   button,
@@ -318,7 +334,7 @@
   --color-caption-close-foreground: #fff;
 }
 
-/* Static: read at runtime, by +page and the sidebar store. */
+/* Static: read at runtime, by Workspace.svelte and the sidebar store. */
 @theme static {
   /* The workspace width at which the summary panel fits beside the page. */
   --container-summary-panel: 87.5rem;
@@ -380,8 +396,9 @@
   scale: calc(1 - 2 * var(--motion-scale-delta));
 }
 
-@utility scrollbar-none {
-  scrollbar-width: none;
+/* Descendants style off this scroller's overflow; the scroller itself cannot query it. */
+@utility scroll-state-container {
+  container-type: scroll-state;
 }
 
 @keyframes fade-in {

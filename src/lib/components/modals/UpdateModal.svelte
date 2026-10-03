@@ -10,10 +10,12 @@
     Modal,
     ModalBody,
     ModalHeader,
+    ProgressBar,
     SettingRow,
     Switch,
     WIDE_DIALOG_INSET,
   } from "$lib/components/ui";
+  import { APP_CONFIG } from "$lib/config/app";
   import { HEADING } from "$lib/design";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
@@ -30,6 +32,8 @@
   const isInstalling = $derived(updateStore.isInstalling);
   const updateInfo = $derived(updateStore.updateInfo);
   const error = $derived(updateStore.error);
+  const download = $derived(updateStore.downloadProgress);
+  const downloadTotal = $derived(download?.total ?? 0);
 
   onMount(() => void appInfoStore.load());
 
@@ -90,12 +94,12 @@
               variant="primary"
               icon="mdi:download"
               loading={isInstalling}
-              onclick={() => updateStore.installAndExit()}
+              onclick={() => updateStore.installUpdate()}
             >
               {isInstalling ? "Downloading…" : "Install update"}
             </Button>
           {:else}
-            <span class="text-ui text-foreground-muted">No installer for this PC in the release.</span>
+            <span class="text-ui text-foreground-muted">This release has no portable exe to update from.</span>
           {/if}
           {#if updateInfo.downloadUrl}
             <ExternalLink href={updateInfo.downloadUrl} variant="underline" class="text-ui"
@@ -103,10 +107,20 @@
             >
           {/if}
         </div>
+
+        {#if isInstalling}
+          <ProgressBar
+            class="mt-4 animate-fade-in"
+            value={download && downloadTotal > 0 ? download.downloaded : null}
+            max={downloadTotal}
+            label="Downloading the update"
+            showValue
+          />
+        {/if}
       {:else}
-        <div class="flex animate-fade-in flex-wrap items-center justify-between gap-4">
-          <div class="min-w-0">
-            <p class={["m-0 flex items-center gap-2", HEADING.status]}>
+        <div class="animate-fade-in">
+          <div class="flex items-center justify-between gap-4">
+            <p class={["m-0 flex min-w-0 items-center gap-2", HEADING.status]}>
               {#if updateInfo}
                 <Icon icon="mdi:check-circle" size="xl" class="text-success" />
                 You're up to date
@@ -114,20 +128,33 @@
                 {versionLabel()}
               {/if}
             </p>
-            <p class="m-0 mt-1 text-ui text-foreground-muted">
-              {#if updateInfo}Version {appVersion || updateInfo.currentVersion}.{/if}
-              {lastChecked}.
-            </p>
+            <Button
+              variant="secondary"
+              icon="mdi:refresh"
+              class="shrink-0"
+              loading={isChecking}
+              onclick={checkForUpdate}
+            >
+              {isChecking ? "Checking…" : updateInfo ? "Check again" : "Check for updates"}
+            </Button>
           </div>
-          <Button variant="secondary" icon="mdi:refresh" loading={isChecking} onclick={checkForUpdate}>
-            {isChecking ? "Checking…" : updateInfo ? "Check again" : "Check for updates"}
-          </Button>
+          <p class="m-0 mt-1 text-ui text-foreground-muted">
+            {#if updateInfo}Version {appVersion || updateInfo.currentVersion}.{/if}
+            {lastChecked}.
+          </p>
         </div>
       {/if}
 
       {#if error}
         <Callout tone="error" icon="mdi:alert-circle" class="mt-4 animate-fade-in text-ui">
-          <span class="min-w-0 flex-1">{error}</span>
+          <span class="min-w-0 flex-1">
+            {error}
+            {#if updateStore.manualDownloadOnly}
+              <ExternalLink href="{APP_CONFIG.githubRepo}/releases" variant="underline"
+                >Open the releases page</ExternalLink
+              >
+            {/if}
+          </span>
           <LinkButton tone="muted" class="shrink-0 text-xs" onclick={() => updateStore.clearError()}>
             Dismiss
           </LinkButton>

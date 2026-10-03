@@ -230,10 +230,12 @@
       "name": "Turn off Start menu app promotions",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -249,10 +251,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -288,10 +292,12 @@
       "name": "Turn off auto-installed sponsored apps",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -325,10 +331,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -390,10 +398,12 @@
       "name": "Turn off the post-update welcome experience",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -409,10 +419,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -448,10 +460,12 @@
       "name": "Turn off the 'Get even more out of Windows' nag",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -467,10 +481,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -506,10 +522,12 @@
       "name": "Turn off web results in Start search",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -543,10 +561,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -608,10 +628,12 @@
       "name": "Turn off Widgets",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -627,10 +649,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -666,10 +690,12 @@
       "name": "Silence suggested and backup reminder toasts",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Silenced",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -694,10 +720,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -746,10 +774,12 @@
       "name": "Turn off Edge startup boost",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -774,10 +804,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -826,10 +858,12 @@
       "name": "Turn off the Edge sidebar and Collections",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -854,10 +888,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -906,10 +942,12 @@
       "name": "Taskbar search style (Windows 11)",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Hide",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -934,10 +972,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Search icon only",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -962,10 +1002,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Search icon and label",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -990,10 +1032,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Search box",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1042,10 +1086,12 @@
       "name": "Alt+Tab shows windows only",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Open windows only",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1061,10 +1107,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Windows and 3 most recent tabs",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1080,10 +1128,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Windows and 5 most recent tabs",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1099,10 +1149,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Windows and 20 most recent tabs",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1118,10 +1170,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Windows decides",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -1157,12 +1211,14 @@
       "name": "Set visual effects to best performance",
       "options": [
         {
+          "audit_changes": [],
           "commands": [
             "rundll32.exe user32.dll,UpdatePerUserSystemParameters 1, True"
           ],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Best performance",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1214,12 +1270,14 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [
             "rundll32.exe user32.dll,UpdatePerUserSystemParameters 1, True"
           ],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Full visual effects",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -1307,10 +1365,12 @@
       "name": "Disable Windows Search indexing",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [],
           "scheduler_changes": [],
           "service_changes": [
@@ -1322,10 +1382,12 @@
           ]
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Automatic, Delayed",
+          "power_changes": [],
           "registry_changes": [],
           "scheduler_changes": [],
           "service_changes": [
@@ -1357,10 +1419,12 @@
       "name": "Disable SysMain (SuperFetch) prefetching",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [],
           "scheduler_changes": [],
           "service_changes": [
@@ -1372,10 +1436,12 @@
           ]
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Automatic",
+          "power_changes": [],
           "registry_changes": [],
           "scheduler_changes": [],
           "service_changes": [
@@ -1407,10 +1473,12 @@
       "name": "Halve the MMCSS reserved CPU (System Responsiveness)",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Reduced (10)",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1426,10 +1494,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Reserve 20 percent",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1465,10 +1535,12 @@
       "name": "Hardware-accelerated GPU scheduling (HAGS)",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1484,10 +1556,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1503,10 +1577,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Let the system decide",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -1542,10 +1618,12 @@
       "name": "Force exclusive fullscreen in games",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Exclusive fullscreen forced",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1579,10 +1657,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Fullscreen optimizations on",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1644,10 +1724,12 @@
       "name": "Variable refresh rate for windowed games",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1663,10 +1745,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1682,10 +1766,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Driver decides",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -1721,12 +1807,14 @@
       "name": "Activate the Ultimate Performance power plan",
       "options": [
         {
+          "audit_changes": [],
           "commands": [
             "$store = 'HKLM:\\SOFTWARE\\MagicXToolbox\\PowerPlan'\n$guidRx = '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}'\n$prior = [regex]::Match((powercfg /getactivescheme | Out-String), $guidRx).Value\nif (-not $prior) { Write-Error 'Could not read the currently active power scheme'; exit 1 }\n$known = (Get-ItemProperty -Path $store -Name AppliedScheme -ErrorAction SilentlyContinue).AppliedScheme\n# New-Item -Force on an existing key deletes its values.\nif (-not (Test-Path $store)) { New-Item -Path $store -Force | Out-Null }\nif ($known -and (powercfg /list | Out-String) -match [regex]::Escape($known)) {\n  $guid = $known\n} else {\n  $out = powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>&1\n  if ($LASTEXITCODE -ne 0) { Write-Error ($out | Out-String); exit 1 }\n  $guid = [regex]::Match(($out | Out-String), $guidRx).Value\n  if (-not $guid) { Write-Error 'Could not read the guid of the new scheme'; exit 1 }\n  Set-ItemProperty -Path $store -Name AppliedScheme -Value $guid -Force\n}\nif ($prior -ne $guid) { Set-ItemProperty -Path $store -Name PriorScheme -Value $prior -Force }\npowercfg /setactive $guid\nif ($LASTEXITCODE -ne 0) { Write-Error 'powercfg /setactive failed'; exit 1 }\nexit 0\n"
           ],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Ultimate Performance",
+          "power_changes": [],
           "registry_changes": [],
           "scheduler_changes": [],
           "service_changes": []
@@ -1752,10 +1840,12 @@
       "name": "Disable VBS and Memory Integrity (HVCI)",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1780,10 +1870,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Memory integrity enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -1832,10 +1924,12 @@
       "name": "Disable Spectre / Meltdown CPU mitigations",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Spectre v2 and Meltdown mitigations disabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1860,10 +1954,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -1912,10 +2008,12 @@
       "name": "Disable mouse acceleration (Enhance Pointer Precision)",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Acceleration off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -1949,10 +2047,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Acceleration on",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2014,10 +2114,12 @@
       "name": "Limit diagnostic data to the Required level",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Required only",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2033,10 +2135,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "User's choice",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -2072,10 +2176,12 @@
       "name": "Disable the Customer Experience Improvement Program",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2148,10 +2254,12 @@
       "name": "Disable Compatibility Appraiser tasks",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2246,10 +2354,12 @@
       "name": "Disable Activity History and Timeline",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2283,10 +2393,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -2348,10 +2460,12 @@
       "name": "Turn off location tracking",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2413,10 +2527,12 @@
       "name": "Turn off lock screen ads and fun facts",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2441,10 +2557,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "On",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2493,10 +2611,12 @@
       "name": "Disable Windows consumer features",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2512,10 +2632,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -2551,10 +2673,12 @@
       "name": "Block website access to your language list",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Blocked",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2570,10 +2694,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Allowed",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -2609,10 +2735,12 @@
       "name": "Disable File Explorer cloud recommendations",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2628,10 +2756,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -2667,10 +2797,12 @@
       "name": "Disable the Windows Error Reporting service",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [],
           "scheduler_changes": [],
           "service_changes": [
@@ -2702,10 +2834,12 @@
       "name": "Disable the Remote Registry service",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [],
           "scheduler_changes": [],
           "service_changes": [
@@ -2737,12 +2871,14 @@
       "name": "Remove SMBv1 protocol",
       "options": [
         {
+          "audit_changes": [],
           "commands": [
             "Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -ErrorAction Stop | Out-Null\n"
           ],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Removed",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2758,10 +2894,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Installed",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -2801,10 +2939,12 @@
       "name": "Disable administrative shares (C$, ADMIN$)",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Disabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2820,10 +2960,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -2859,10 +3001,12 @@
       "name": "Enable the Microsoft vulnerable-driver blocklist",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2878,10 +3022,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Not configured",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -2917,10 +3063,12 @@
       "name": "Controlled Folder Access (ransomware shield)",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Block",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2936,10 +3084,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Audit only",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -2955,10 +3105,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -2994,10 +3146,12 @@
       "name": "Defender Network Protection",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Block",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3013,10 +3167,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Audit only",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3032,10 +3188,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -3071,10 +3229,12 @@
       "name": "Block LSASS credential theft (ASR rule)",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Block",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3099,10 +3259,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -3142,10 +3304,12 @@
       "name": "ASR rules: block Office/script malware vectors",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Block",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3197,10 +3361,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Audit only",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3252,10 +3418,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -3334,10 +3502,12 @@
       "name": "Lock the screen when idle",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Lock after 10 min",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3412,10 +3582,12 @@
       "name": "Enable Credential Guard",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Enabled",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3440,10 +3612,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3492,10 +3666,12 @@
       "name": "Defender cloud protection and MAPS",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "High, send safe samples",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3547,10 +3723,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "High, prompt before sending samples",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3602,10 +3780,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "User's choice",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -3693,10 +3873,12 @@
       "name": "PowerShell module logging and transcription",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Module logging and transcription",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3748,10 +3930,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Module logging only",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3803,10 +3987,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -3894,10 +4080,12 @@
       "name": "Kernel DMA protection policy",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Block all",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3922,10 +4110,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Allow only after sign-in",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -3950,10 +4140,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Not configured",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -4002,10 +4194,12 @@
       "name": "Defer feature updates",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Defer 30 days",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -4030,10 +4224,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Defer 180 days",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -4058,10 +4254,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Defer 365 days",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -4086,10 +4284,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "No deferral",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -4138,10 +4338,12 @@
       "name": "Control mid-cycle features and optional content",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "No mid-cycle features or optional content",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -4175,10 +4377,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Receive optional content and gradual feature rollouts",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -4212,10 +4416,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Windows decides",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "delete_value",
@@ -4277,10 +4483,12 @@
       "name": "Windows Update mode",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Automatic: download and install",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -4305,10 +4513,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Download only: I choose when to install",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -4333,10 +4543,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Notify only: nothing downloads unprompted",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -4361,10 +4573,12 @@
           "service_changes": []
         },
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Off by policy",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",
@@ -4413,10 +4627,12 @@
       "name": "Block the Windows Update pipeline",
       "options": [
         {
+          "audit_changes": [],
           "commands": [],
           "firewall_changes": [],
           "hosts_changes": [],
           "label": "Blocked",
+          "power_changes": [],
           "registry_changes": [
             {
               "action": "set",

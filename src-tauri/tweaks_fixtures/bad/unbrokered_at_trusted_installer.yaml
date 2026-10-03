@@ -1,0 +1,29 @@
+category:
+  id: unbrokered_at_trusted_installer
+  name: "Fixture"
+  icon: "mdi:alert"
+  description: "Effects no broker op carries may not route to TrustedInstaller; an HKCU address runs as the user and is exempt."
+
+tweaks:
+  - id: unbrokered_under_ti
+    name: "Unbrokered Under TI"
+    description: "A ti floor over every kind without a broker op."
+    risk_level: low
+    elevation: ti
+    reversible: true
+    effects:
+      - id: h
+        hosts: { ip: "0.0.0.0", domain: "tracker.example.invalid" }
+      - id: f
+        firewall: { name: "Fixture Rule", direction: outbound, action: block }
+      - id: p
+        power_setting: { subgroup: '238c9fa8-0aad-41ed-83f4-97be242c8f20', setting: 'bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d', label: "Allow wake timers" }
+      - id: a
+        audit_policy: { subcategory: '{0CCE9215-69AE-11D9-BED3-505054503030}', event: success, label: "Logon" }
+      - id: field
+        registry: { key: 'HKLM\SOFTWARE\ExampleCo\Packed', name: Settings, type: REG_SZ, field: Mode }
+      - id: user_field
+        registry: { key: 'HKCU\Software\ExampleCo\Packed', name: Settings, type: REG_SZ, field: Mode }
+    options:
+      - label: "On"
+        values: { h: present, f: present, p: { ac: 0, dc: 0 }, a: enabled, field: "1", user_field: "1" }

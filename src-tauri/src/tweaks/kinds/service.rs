@@ -32,11 +32,7 @@ impl EffectKind for ServiceKind {
         // Reads never escalate (spec invariant 24) -- `cx` is unused here on purpose.
         match s {
             Setting::Service(addr) => read_service(addr),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Task(_)
-            | Setting::Hosts(_)
-            | Setting::Firewall(_) => Err(Error::Invalid("ServiceKind cannot read this Setting")),
+            _ => Err(Error::Invalid("ServiceKind cannot read this Setting")),
         }
     }
 
@@ -44,11 +40,7 @@ impl EffectKind for ServiceKind {
         guard_level(cx)?;
         match s {
             Setting::Service(addr) => drive_service(addr, target),
-            Setting::Registry(_)
-            | Setting::RegistryKey(_)
-            | Setting::Task(_)
-            | Setting::Hosts(_)
-            | Setting::Firewall(_) => Err(Error::Invalid("ServiceKind cannot drive this Setting")),
+            _ => Err(Error::Invalid("ServiceKind cannot drive this Setting")),
         }
     }
 }

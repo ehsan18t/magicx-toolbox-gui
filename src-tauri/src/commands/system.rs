@@ -1,11 +1,13 @@
 use crate::error::Result;
-use crate::models::SystemInfo;
+use crate::models::SystemReading;
 use crate::services::system_info_service;
 
-/// Get system information (Windows version, admin status, etc.)
+/// The live fields always; the WMI hardware read only when `with_hardware`.
 #[tauri::command]
-pub async fn get_system_info() -> Result<SystemInfo> {
-    log::info!("Reading system information");
-    // WMI queries block; off the async worker.
-    tauri::async_runtime::spawn_blocking(system_info_service::get_system_info).await?
+pub async fn get_system_info(with_hardware: bool) -> Result<SystemReading> {
+    log::info!("Reading system information (hardware: {with_hardware})");
+    tauri::async_runtime::spawn_blocking(move || {
+        system_info_service::get_system_info(with_hardware)
+    })
+    .await?
 }

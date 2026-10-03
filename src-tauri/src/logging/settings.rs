@@ -201,7 +201,11 @@ mod tests {
         assert_eq!(
             with_overrides(
                 base,
-                args(&["--after-restart", "--log-persist=0", "--log-detailed=1"])
+                args(&[
+                    "--after-restart=1234",
+                    "--log-persist=0",
+                    "--log-detailed=1"
+                ])
             ),
             Settings {
                 persist: false,

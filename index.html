@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%sveltekit.assets%/icons/Toolbox.ico" />
+    <link rel="icon" href="/icons/Toolbox.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MagicX Toolbox</title>
 
@@ -71,19 +71,56 @@
         border-color: #dbe2ec;
         border-top-color: var(--loader-accent, #8b5cf6);
       }
+      /* main.ts shows it when the interface fails to start, so app.css may never load. */
+      .startup-error {
+        max-width: 28rem;
+        padding: 1.5rem;
+        font:
+          14px/1.5 "Segoe UI",
+          system-ui,
+          sans-serif;
+        --startup-text: #e5e9f0;
+        color: var(--startup-text);
+        text-align: center;
+        overflow-wrap: anywhere;
+      }
+      [data-theme="light"] .startup-error {
+        --startup-text: #1c2438;
+      }
+      .startup-error h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.125rem;
+        font-weight: 600;
+      }
+      .startup-error p {
+        margin: 0 0 0.75rem;
+      }
+      .startup-error button {
+        margin-top: 0.5rem;
+        padding: 0.4rem 1.5rem;
+        font: inherit;
+        color: #fff;
+        background: var(--loader-accent, #8b5cf6);
+        border: 0;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .startup-error button:focus-visible {
+        outline: 2px solid var(--startup-text);
+        outline-offset: 3px;
+      }
       @keyframes initial-spin {
         to {
           transform: rotate(360deg);
         }
       }
     </style>
-
-    %sveltekit.head%
   </head>
   <body class="overflow-hidden">
     <div id="initial-loader">
       <div class="initial-spinner"></div>
     </div>
-    <div style="display: contents">%sveltekit.body%</div>
+    <div id="app" class="contents"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

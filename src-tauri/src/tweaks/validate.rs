@@ -11,9 +11,9 @@
 //! test-only).
 
 use super::model::{
-    effective_level, ActionDef, AppDef, AppSource, BuildExpr, Corpus, Effect, EffectDef, EffectId,
-    Hive, InstallSource, Level, Opt, OptLabel, OptValue, RegType, ScopedValue, Setting, SharedId,
-    StartupType, Tweak, Value, WindowsScope,
+    effective_level, ActionDef, AppDef, AppSource, AuditEvent, BuildExpr, Corpus, Effect,
+    EffectDef, EffectId, Hive, InstallSource, Level, Opt, OptLabel, OptValue, RegType, ScopedValue,
+    Setting, SharedId, StartupType, Tweak, Value, WindowsScope,
 };
 use super::parse::{expand_product, ParseError};
 use std::collections::{HashMap, HashSet};
@@ -256,14 +256,15 @@ pub enum ValidationError {
         build: u32,
     },
 
-    /// An `action:` effect whose routed level is TrustedInstaller (spec §7, ADR-0005): no `BrokerOp`
-    /// carries a script, so `ActionKind` rejects `Ti` and both apply and undo would fail at runtime.
+    /// An effect routed to TrustedInstaller that no `BrokerOp` carries (spec §7, ADR-0005): its kind
+    /// rejects `Ti`, so both apply and undo would fail at runtime.
     #[error(
-        "tweak `{tweak}` effect `{effect}` is an action routed to TrustedInstaller, from {origin}: a script cannot run at `ti` (no broker op carries one), so lower the level or express the change as a typed effect"
+        "tweak `{tweak}` effect `{effect}` is a `{kind}` effect routed to TrustedInstaller, from {origin}: no broker op carries it, so lower the level or express the change as a kind that runs at `ti`"
     )]
-    ActionAtTrustedInstaller {
+    UnbrokeredAtTrustedInstaller {
         tweak: String,
         effect: EffectId,
+        kind: &'static str,
         origin: &'static str,
     },
 
@@ -340,7 +341,7 @@ pub fn validate_structural(corpus: &Corpus) -> Vec<ValidationError> {
         check_no_revision(tweak, &mut errors);
         check_if_missing_requires_optional(tweak, &mut errors);
         check_ephemeral_has_no_undo_probe(tweak, &mut errors);
-        check_action_never_ti(tweak, &mut errors);
+        check_unbrokered_never_ti(tweak, corpus, &mut errors);
     }
     errors
 }
@@ -605,6 +606,8 @@ enum CoarseKey {
     Task(String),
     Hosts(String, String),
     Firewall(String),
+    Power(String, String),
+    Audit(String, AuditEvent),
 }
 
 struct Claim {
@@ -648,6 +651,20 @@ fn coarse_key_and_field(setting: &Setting) -> (CoarseKey, Option<String>, String
             CoarseKey::Firewall(addr.name.clone()),
             None,
             format!("firewall rule `{}`", addr.name),
+        ),
+        Setting::Power(addr) => (
+            CoarseKey::Power(addr.subgroup.clone(), addr.setting.clone()),
+            None,
+            format!("power setting `{}\\{}`", addr.subgroup, addr.setting),
+        ),
+        Setting::Audit(addr) => (
+            CoarseKey::Audit(addr.subcategory.clone(), addr.event),
+            None,
+            format!(
+                "audit subcategory `{}` {}",
+                addr.subcategory,
+                addr.event.as_str()
+            ),
         ),
     }
 }
@@ -862,9 +879,11 @@ fn check_canonicalization(corpus: &Corpus, errors: &mut Vec<ValidationError>) {
             continue;
         }
         let use_kind = if is_service_startup_value(&addr.path, &addr.name) {
-            Some("Service")
+            Some("service")
         } else if is_task_scheduler_path(&addr.path) {
-            Some("Task")
+            Some("task")
+        } else if has_prefix_ignoring_case(&addr.path, POWER_SCHEMES) {
+            Some("power_setting")
         } else {
             None
         };
@@ -889,9 +908,18 @@ fn is_service_startup_value(path: &str, name: &str) -> bool {
 
 /// The Task Scheduler's own registry storage tree.
 fn is_task_scheduler_path(path: &str) -> bool {
-    const PREFIX: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache";
-    path.get(..PREFIX.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(PREFIX))
+    has_prefix_ignoring_case(
+        path,
+        r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache",
+    )
+}
+
+/// Where the power service stores each scheme's AC and DC indexes.
+const POWER_SCHEMES: &str = r"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes";
+
+fn has_prefix_ignoring_case(path: &str, prefix: &str) -> bool {
+    path.get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
 }
 
 /// Every option covers every Setting effect; shared entries are explicit `claim`/`unclaimed`;
@@ -1051,19 +1079,34 @@ fn check_ephemeral_has_no_undo_probe(tweak: &Tweak, errors: &mut Vec<ValidationE
     }
 }
 
-/// An `action:` effect may never route to TrustedInstaller (spec §7, ADR-0005): `ActionKind`
-/// rejects `Ti` because no `BrokerOp` carries a script, so a shipped one would fail on apply AND on
-/// every undo. Rejected at build, where the author can still choose a level that runs.
-fn check_action_never_ti(tweak: &Tweak, errors: &mut Vec<ValidationError>) {
+/// An effect no `BrokerOp` carries may never route to TrustedInstaller (spec §7, ADR-0005): a
+/// shipped one would fail on apply AND on every undo. Rejected at build, where the author can still
+/// choose a level that runs. An HKCU registry address always runs as the user, so it never routes
+/// to `ti`.
+fn check_unbrokered_never_ti(tweak: &Tweak, corpus: &Corpus, errors: &mut Vec<ValidationError>) {
     for effect in &tweak.surface {
-        if !matches!(effect.kind, Effect::Action(_))
-            || effective_level(tweak.elevation, effect.elevation) != Level::Ti
-        {
+        if effective_level(tweak.elevation, effect.elevation) != Level::Ti {
             continue;
         }
-        errors.push(ValidationError::ActionAtTrustedInstaller {
+        let setting = match &effect.kind {
+            Effect::Setting(setting) => Some(setting),
+            Effect::Shared(id) => corpus
+                .shared
+                .iter()
+                .find(|s| &s.id == id)
+                .map(|s| &s.setting),
+            Effect::Action(_) => None,
+        };
+        let kind = match setting {
+            None if matches!(effect.kind, Effect::Action(_)) => "action",
+            Some(Setting::Registry(addr)) if addr.hive == Hive::Hkcu => continue,
+            Some(setting) if !setting.has_broker_op() => setting.yaml_key(),
+            _ => continue,
+        };
+        errors.push(ValidationError::UnbrokeredAtTrustedInstaller {
             tweak: tweak.id.clone(),
             effect: effect.id.clone(),
+            kind,
             origin: if effect.elevation == Some(Level::Ti) {
                 "the effect's own `elevation: ti`"
             } else {
@@ -1598,7 +1641,7 @@ mod tests {
         else {
             panic!("expected NonCanonicalKind, got {:?}", errors[0]);
         };
-        assert_eq!(*use_kind, "Service");
+        assert_eq!(*use_kind, "service");
         assert_eq!(effect.0, "raw_start_value");
     }
 
@@ -1610,7 +1653,7 @@ mod tests {
             .map(|e| match e {
                 ValidationError::NonCanonicalKind {
                     owner,
-                    use_kind: "Service",
+                    use_kind: "service",
                     ..
                 } => owner.to_string(),
                 other => panic!("expected NonCanonicalKind, got {other:?}"),
@@ -1680,6 +1723,84 @@ mod tests {
             source.to_string().contains("trailing backslash"),
             "{source}"
         );
+    }
+
+    #[test]
+    fn a_power_setting_named_by_alias_is_rejected() {
+        let errors = errors_for("power_setting_bad_guid.yaml");
+        assert!(
+            matches!(
+                &errors[..],
+                [ValidationError::InvalidAddress {
+                    source: ParseError::InvalidGuid { .. },
+                    ..
+                }]
+            ),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn power_and_audit_values_outside_their_domain_are_rejected() {
+        let options = |name: &str| -> Vec<String> {
+            errors_for(name)
+                .iter()
+                .map(|e| match e {
+                    ValidationError::InvalidOptionValue { option, .. } => option.0.clone(),
+                    other => panic!("expected InvalidOptionValue, got {other:?}"),
+                })
+                .collect()
+        };
+        assert_eq!(
+            options("power_setting_bad_value.yaml"),
+            ["Missing dc", "Negative", "Too large", "Keyword"]
+        );
+        assert_eq!(options("audit_policy_bad_value.yaml"), ["On"]);
+    }
+
+    #[test]
+    fn a_power_setting_or_audit_flag_owned_twice_is_rejected_however_spelled() {
+        let pairs: Vec<String> = errors_for("dup_typed_addresses.yaml")
+            .iter()
+            .map(|e| match e {
+                ValidationError::DuplicateAddress { first, second, .. } => {
+                    format!("{first} / {second}")
+                }
+                other => panic!("expected DuplicateAddress, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            pairs,
+            [
+                "tweak `audit_a` effect `a` / tweak `audit_b` effect `a`",
+                "tweak `power_a` effect `p` / tweak `power_b` effect `p`",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_power_scheme_index_as_raw_registry_is_rejected() {
+        let errors = errors_for("power_scheme_as_raw_registry.yaml");
+        assert!(
+            matches!(
+                &errors[..],
+                [ValidationError::NonCanonicalKind {
+                    use_kind: "power_setting",
+                    ..
+                }]
+            ),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn the_power_and_audit_kinds_validate_clean() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tweaks_fixtures/kinds/power_and_audit.yaml");
+        let corpus = load_corpus(&path).expect("fixture must load");
+        let mut errors = validate_structural(&corpus);
+        errors.extend(validate_semantic(&corpus, SUPPORT_MATRIX));
+        assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
@@ -1818,12 +1939,13 @@ mod tests {
         let named: Vec<(&str, &str, &str)> = errors
             .iter()
             .map(|e| match e {
-                ValidationError::ActionAtTrustedInstaller {
+                ValidationError::UnbrokeredAtTrustedInstaller {
                     tweak,
                     effect,
+                    kind: "action",
                     origin,
                 } => (tweak.as_str(), effect.0.as_str(), *origin),
-                other => panic!("expected ActionAtTrustedInstaller, got {other:?}"),
+                other => panic!("expected UnbrokeredAtTrustedInstaller, got {other:?}"),
             })
             .collect();
         assert!(
@@ -1841,6 +1963,27 @@ mod tests {
                 "the effect's own `elevation: ti`"
             )),
             "the step-sourced one must be named: {named:?}"
+        );
+    }
+
+    #[test]
+    fn every_kind_without_a_broker_op_is_rejected_at_trusted_installer() {
+        let kinds: Vec<&str> = errors_for("unbrokered_at_trusted_installer.yaml")
+            .iter()
+            .map(|e| match e {
+                ValidationError::UnbrokeredAtTrustedInstaller { kind, .. } => *kind,
+                other => panic!("expected UnbrokeredAtTrustedInstaller, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                "hosts",
+                "firewall",
+                "power_setting",
+                "audit_policy",
+                "registry"
+            ]
         );
     }
 

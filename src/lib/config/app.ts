@@ -8,14 +8,9 @@ export const APP_CONFIG = {
     website: "https://ehsankhan.me",
     email: "ehsan18t@gmail.com",
   },
-  update: {
-    // Matches MagicX-Toolbox_x.x.x_x64-setup.exe and MagicX-Toolbox_x.x.x_x64_en-US.msi.
-    assetPattern: /MagicX[-_]Toolbox.*x64.*\.(exe|msi)$/i,
-    releasesApiUrl: "https://api.github.com/repos/ehsan18t/magicx-toolbox-gui/releases",
-  },
 } as const;
 
-// app.html reads `theme` and `colorScheme` before the bundle loads: rename them there too.
+// index.html reads `theme` and `colorScheme` before the bundle loads: rename them there too.
 export const STORAGE_KEYS = {
   theme: "theme",
   colorScheme: "magicx-color-scheme",

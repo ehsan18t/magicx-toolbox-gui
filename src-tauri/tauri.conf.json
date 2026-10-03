@@ -4,7 +4,7 @@
   "version": "3.0.0",
   "identifier": "me.ehsankhan.magicx-toolbox",
   "build": {
-    "frontendDist": "../build",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "vite dev",
     "beforeBuildCommand": "vite build"
@@ -22,29 +22,40 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "visible": false
+        "visible": false,
+        "backgroundColor": "#0a0f1c",
+        "generalAutofillEnabled": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self'",
+        "style-src-attr": "'unsafe-inline'",
+        "connect-src": "ipc: http://ipc.localhost",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
+        "frame-src": "'none'"
+      },
+      "devCsp": {
+        "default-src": "'self'",
+        "script-src": "'self' 'unsafe-inline'",
+        "style-src": "'self' 'unsafe-inline'",
+        "connect-src": "'self' ipc: http://ipc.localhost ws://localhost:1420",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
+        "frame-src": "'none'"
+      },
+      "freezePrototype": true
     }
   },
   "bundle": {
-    "active": true,
-    "targets": "all",
+    "active": false,
     "icon": ["icons/Toolbox.ico"],
     "publisher": "Ehsan Khan",
-    "category": "Productivity",
-    "shortDescription": "Windows optimization and privacy toolkit",
-    "longDescription": "MagicX Toolbox is a comprehensive Windows optimization tool that allows you to customize system settings, improve performance, and enhance privacy through an intuitive interface.",
-    "resources": [],
-    "copyright": "Copyright © 2025 Ehsan Khan",
-    "licenseFile": "../LICENSE",
-    "externalBin": [],
-    "windows": {
-      "certificateThumbprint": null,
-      "digestAlgorithm": "sha256",
-      "timestampUrl": ""
-    }
+    "copyright": "Copyright © 2025 Ehsan Khan"
   }
 }

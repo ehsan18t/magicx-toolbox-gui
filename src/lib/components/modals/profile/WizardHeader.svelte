@@ -8,7 +8,7 @@
     /** The current step's name. */
     step: string;
     /** Omitted while a step cannot be left. */
-    onclose?: () => void;
+    onclose?: (() => void) | undefined;
   }
 
   let { title, icon, step, onclose }: Props = $props();

@@ -10,14 +10,15 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::commands::tweaks::{blocking, TweakEngineState};
 use crate::error::{Error, Result};
-use crate::logging::{self, pipeline::Entry, yes_no, Status};
+use crate::logging::{self, pipeline::Entry, pipeline::Source, yes_no, Status};
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct LogLineView {
     pub seq: u64,
     pub ts: String,
-    pub level: &'static str,
-    pub source: &'static str,
+    pub level: LogLevel,
+    pub source: Source,
     pub target: String,
     pub msg: String,
 }
@@ -28,26 +29,40 @@ impl From<Entry> for LogLineView {
             seq: e.seq,
             ts: e.ts,
             level: match e.level {
-                log::Level::Error => "error",
-                log::Level::Warn => "warn",
-                log::Level::Info => "info",
-                log::Level::Debug => "debug",
-                log::Level::Trace => "trace",
+                log::Level::Error => LogLevel::Error,
+                log::Level::Warn => LogLevel::Warn,
+                log::Level::Info => LogLevel::Info,
+                log::Level::Debug => LogLevel::Debug,
+                log::Level::Trace => LogLevel::Trace,
             },
-            source: e.source.as_str(),
+            source: e.source,
             target: e.target,
             msg: e.msg,
         }
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct LogTail {
     pub lines: Vec<LogLineView>,
+    /// Lines after `since` that left the in-memory buffer before they could be read.
     pub skipped: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct LogSettingsView {
     pub persist: bool,
     pub detailed: bool,

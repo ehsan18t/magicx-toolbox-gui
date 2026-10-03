@@ -241,7 +241,6 @@ export function systemInfo(admin: boolean): SystemInfo {
       build_number: "26200.6584",
       is_windows_11: true,
       version_string: "11",
-      is_windows_server: false,
       uptime_seconds: 3 * 86_400 + 7 * 3_600 + 42 * 60,
       install_date: "2025-11-14T09:21:07Z",
     },

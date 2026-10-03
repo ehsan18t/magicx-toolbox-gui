@@ -48,14 +48,7 @@ impl Stats {
 }
 
 fn setting_label(s: &Setting) -> &'static str {
-    match s {
-        Setting::Registry(_) => "registry value",
-        Setting::RegistryKey(_) => "registry key",
-        Setting::Service(_) => "service (SCM)",
-        Setting::Task(_) => "scheduled task (COM)",
-        Setting::Hosts(_) => "hosts file",
-        Setting::Firewall(_) => "firewall",
-    }
+    s.yaml_key()
 }
 
 struct TimedKinds<'a>(&'a Stats);

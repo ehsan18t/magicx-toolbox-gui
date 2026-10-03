@@ -61,7 +61,7 @@
         value: SYSTEM_DEFAULT,
         label: SYSTEM_DEFAULT_LABEL,
         disabled: defaultBlocked,
-        tooltip: defaultBlocked ? "Already set before a snapshot was saved, so there is nothing to restore" : undefined,
+        ...(defaultBlocked && { tooltip: "Already set before a snapshot was saved, so there is nothing to restore" }),
         confirms: true,
       });
     }

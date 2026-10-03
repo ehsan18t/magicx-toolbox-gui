@@ -63,6 +63,7 @@ Each scan also reports how the app could come back on this machine. winget count
 - **Remove, script.** Runs the authored `remove` with its `timeout` (default 600 seconds).
 - **Install.** Only the `winget` route runs in the backend: `winget install --id <id> -e --source msstore|winget --accept-source-agreements --accept-package-agreements`, timeout 1800 seconds. The `store_page` route is opened by the frontend (`ms-windows-store://pdp/?ProductId=<id>`) and is not verified; the row checks presence again when the window regains focus.
 - **Did it work.** A non-zero exit is an error. Otherwise the index is invalidated and presence read again: after Remove it must be Absent, after Install it must be Installed, or the command fails with the reason. An AppX package still registered after a successful removal usually belongs to another signed-in account, and the error says so.
+- **Taskbar.** While any Remove or Install runs, the taskbar button shows a busy bar (`src-tauri/src/taskbar.rs`); it clears when the last one ends, turns red when one failed while the window was in the background (until the window is focused again), and the button flashes when a job ends in the background.
 
 ## Gates
 

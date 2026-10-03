@@ -20,7 +20,7 @@
   interface Props extends Omit<HTMLAttributes<HTMLDivElement>, "class">, CalloutVariants {
     /** Leading icon in the tone's colour, top-aligned with the first line. */
     icon?: IconName;
-    class?: string;
+    class?: string | undefined;
     children: Snippet;
   }
 

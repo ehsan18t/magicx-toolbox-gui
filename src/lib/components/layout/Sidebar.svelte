@@ -4,7 +4,6 @@
 </script>
 
 <script lang="ts">
-  import { overflowHints } from "$lib/attachments/overflowHints";
   import { card, IconButton, indicator as indicatorBar, Skeleton } from "$lib/components/ui";
   import { navigationStore, pageTweaks, type TabId } from "$lib/stores/navigation.svelte";
   import { sidebarStore } from "$lib/stores/sidebar.svelte";
@@ -12,19 +11,29 @@
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import { isComplete } from "$lib/utils/tweakPresentation";
   import { plural } from "$lib/utils/format";
-  import { fade, reducedMotion } from "$lib/utils/motion";
+  import { reducedMotion } from "$lib/utils/motion";
   import SidebarFooter from "./SidebarFooter.svelte";
   import SidebarNavItem from "./SidebarNavItem.svelte";
 
   const isOpen = $derived(sidebarStore.isOpen);
-  let moreAbove = $state(false);
-  let moreBelow = $state(false);
   let scrollEl = $state<HTMLElement | null>(null);
+
+  function scrollMore(event: MouseEvent) {
+    if (!scrollEl) return;
+    const top = scrollEl.clientHeight * SCROLL_PAGE_FRACTION;
+    scrollEl.scrollBy({ top, behavior: reducedMotion() ? "auto" : "smooth" });
+    // At the end the button turns invisible, and focus on it would drop to <body>.
+    if (scrollEl.scrollTop + scrollEl.clientHeight + top >= scrollEl.scrollHeight - 1) {
+      [...scrollEl.querySelectorAll("button")].findLast((b) => b !== event.currentTarget)?.focus();
+    }
+  }
   let drawerEl = $state<HTMLElement | null>(null);
   const activeTab = $derived(navigationStore.activeTab);
   const categoryStats = $derived(categoriesStore.stats);
   const pendingByCategory = $derived(pendingChangesStore.countByCategory);
-  const fadeFrom = $derived(sidebarStore.isOverlay ? "from-elevated" : "from-background");
+  const hint = $derived(
+    `pointer-events-none invisible absolute inset-x-0 opacity-0 transition-[opacity,visibility] duration-fast ${sidebarStore.isOverlay ? "from-elevated" : "from-background"}`,
+  );
 
   // One shared indicator glides between pages; when items shift under it (the pane opening, categories
   // loading) it jumps with them instead.
@@ -109,77 +118,71 @@
         })
       : 'w-full'}"
   >
-    <div class="relative flex min-h-0 flex-1 flex-col">
-      <div
-        bind:this={scrollEl}
-        class="relative flex min-h-0 flex-1 scrollbar-none flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2"
-        {@attach overflowHints((above, below) => {
-          moreAbove = above;
-          moreBelow = below;
-        })}
-      >
-        {#if indicator}
-          <span
-            class={indicatorBar({
-              class: [
-                "pointer-events-none top-0 animate-fade-in",
-                indicator.glide && "transition-transform duration-slow",
-              ],
-            })}
-            style:transform="translate({indicator.x}px, {indicator.y}px)"
-            aria-hidden="true"
-          ></span>
-        {/if}
-        {#each navigationStore.fixedTabs as tab (tab.id)}
-          {@const count = pageTweaks(tab.id)?.length ?? 0}
-          <SidebarNavItem
-            label={tab.name}
-            icon={tab.icon}
-            active={activeTab === tab.id}
-            onclick={() => go(() => navigationStore.navigateToPage(tab.id))}
-            trailing={count > 0 ? String(count) : ""}
-          />
-        {/each}
-
-        <div class="mx-2 my-2 h-px shrink-0 bg-border"></div>
-        {#if isOpen}
-          <div class="shrink-0 px-3 pb-1 text-xs font-semibold text-foreground-muted">Categories</div>
-        {/if}
-
-        {#each navigationStore.categoryTabs as tab (tab.id)}
-          {@const s = categoryStats[tab.id]}
-          <SidebarNavItem
-            label={tab.name}
-            icon={tab.icon}
-            active={activeTab === tab.id}
-            onclick={() => go(() => navigationStore.navigateToCategory(tab.id))}
-            trailing={s ? `${s.applied}/${s.total}` : ""}
-            trailingTone={s && isComplete(s) ? "success" : undefined}
-            alert={s?.attention ? `${plural(s.attention, "needs", "need")} attention` : ""}
-            pending={pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : ""}
-          />
-        {/each}
-
-        {#if tweaksStore.isLoading}
-          {#each { length: SKELETON_ROWS }, i (i)}
-            <div class="flex h-9 shrink-0 items-center gap-3 px-3">
-              <Skeleton class="h-5 w-5 shrink-0" />
-              {#if isOpen}<Skeleton class="h-3.5 flex-1" />{/if}
-            </div>
-          {/each}
-        {/if}
-      </div>
-      {#if moreAbove}
+    <!-- Without scroll-state queries the hints never show, so the native scrollbar stays. -->
+    <div
+      bind:this={scrollEl}
+      class="scroll-state-container relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2 scroll-state:scrollbar-none"
+    >
+      <!-- Zero-height sticky anchors: the fades overlay the items without taking a flex slot. -->
+      <div class="sticky top-0 z-raised -mx-1.5 -mb-0.5 h-0 shrink-0" aria-hidden="true">
         <div
-          transition:fade={{ speed: "fast" }}
-          class="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b to-transparent {fadeFrom}"
-          aria-hidden="true"
+          class="-top-1 h-8 bg-linear-to-b to-transparent scrollable-top:visible scrollable-top:opacity-100 {hint}"
         ></div>
+      </div>
+      {#if indicator}
+        <span
+          class={indicatorBar({
+            class: [
+              "pointer-events-none top-0 animate-fade-in",
+              indicator.glide && "transition-transform duration-slow",
+            ],
+          })}
+          style:transform="translate({indicator.x}px, {indicator.y}px)"
+          aria-hidden="true"
+        ></span>
       {/if}
-      {#if moreBelow}
+      {#each navigationStore.fixedTabs as tab (tab.id)}
+        {@const count = pageTweaks(tab.id)?.length ?? 0}
+        <SidebarNavItem
+          label={tab.name}
+          icon={tab.icon}
+          active={activeTab === tab.id}
+          onclick={() => go(() => navigationStore.navigateToPage(tab.id))}
+          trailing={count > 0 ? String(count) : ""}
+        />
+      {/each}
+
+      <div class="mx-2 my-2 h-px shrink-0 bg-border"></div>
+      {#if isOpen}
+        <div class="shrink-0 px-3 pb-1 text-xs font-semibold text-foreground-muted">Categories</div>
+      {/if}
+
+      {#each navigationStore.categoryTabs as tab (tab.id)}
+        {@const s = categoryStats[tab.id]}
+        <SidebarNavItem
+          label={tab.name}
+          icon={tab.icon}
+          active={activeTab === tab.id}
+          onclick={() => go(() => navigationStore.navigateToCategory(tab.id))}
+          trailing={s ? `${s.applied}/${s.total}` : ""}
+          trailingTone={s && isComplete(s) ? "success" : undefined}
+          alert={s?.attention ? `${plural(s.attention, "needs", "need")} attention` : ""}
+          pending={pendingByCategory[tab.id] ? `${pendingByCategory[tab.id]} staged, not applied` : ""}
+        />
+      {/each}
+
+      {#if tweaksStore.isLoading}
+        {#each { length: SKELETON_ROWS }, i (i)}
+          <div class="flex h-9 shrink-0 items-center gap-3 px-3">
+            <Skeleton class="h-5 w-5 shrink-0" />
+            {#if isOpen}<Skeleton class="h-3.5 flex-1" />{/if}
+          </div>
+        {/each}
+      {/if}
+      <!-- Invisible drops the button from the tab order and the a11y tree. -->
+      <div class="sticky bottom-0 z-raised -mx-1.5 -mt-0.5 h-0 shrink-0">
         <div
-          transition:fade={{ speed: "fast" }}
-          class="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-linear-to-t from-40% to-transparent pb-1 {fadeFrom}"
+          class="-bottom-2 flex h-12 items-end justify-center bg-linear-to-t from-40% to-transparent pb-1 scrollable-bottom:visible scrollable-bottom:opacity-100 {hint}"
         >
           <IconButton
             icon="mdi:chevron-down"
@@ -187,14 +190,10 @@
             label="Scroll for more"
             tooltip="More below"
             class="pointer-events-auto"
-            onclick={() =>
-              scrollEl?.scrollBy({
-                top: scrollEl.clientHeight * SCROLL_PAGE_FRACTION,
-                behavior: reducedMotion() ? "auto" : "smooth",
-              })}
+            onclick={scrollMore}
           />
         </div>
-      {/if}
+      </div>
     </div>
 
     <SidebarFooter />

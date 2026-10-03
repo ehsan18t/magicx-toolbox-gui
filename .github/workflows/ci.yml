@@ -55,14 +55,24 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # prettier, tsc, svelte-check, cargo fmt, clippy, eslint, node tests, cargo test.
+      # prettier, cargo test (test-build, which rewrites the IPC bindings), tsc, svelte-check, cargo fmt,
+      # clippy, eslint, node tests. Bindings start empty so one left by a removed type shows as deleted.
       - name: pnpm run validate
-        run: pnpm run validate
+        shell: bash
+        run: |
+          rm -rf src/lib/types/generated
+          pnpm run validate
 
-      # The manual_tests module compiles only under test-build.
-      - name: Rust tests (test-build)
-        working-directory: src-tauri
-        run: cargo test --all-targets --features test-build
+      # The bindings are checked out LF, as ts-rs writes them, so only a real change shows.
+      - name: IPC bindings are current
+        shell: bash
+        run: |
+          stale=$(git status --porcelain -- src/lib/types/generated)
+          if [ -n "$stale" ]; then
+            echo "$stale"
+            echo "::error::src/lib/types/generated is stale: run cargo test --features test-build in src-tauri and commit the result"
+            exit 1
+          fi
 
   elevated-tests:
     # The ignored tests never ran anywhere. `cargo test` skips them and no job passed
@@ -113,7 +123,7 @@ jobs:
         run: |
           fail=0
           while IFS= read -r f; do
-            case "$f" in *.woff2|*.png|*.ico|*.jpg|*.jpeg|*.gif|*.webp|*.pdf|LICENSE) continue;; esac
+            case "$f" in *.woff2|*.png|*.ico|*.jpg|*.jpeg|*.gif|*.webp|*.pdf|LICENSE|src/lib/types/generated/*) continue;; esac
             [ -f "$f" ] || continue
             # A tracked text file with no CRLF at all is suspicious; empty and
             # single-line-without-newline files are not, so require at least one LF.

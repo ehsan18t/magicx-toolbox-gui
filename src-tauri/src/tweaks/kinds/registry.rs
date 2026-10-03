@@ -31,9 +31,7 @@ impl EffectKind for RegistryKind {
         match s {
             Setting::Registry(addr) => read_value(addr),
             Setting::RegistryKey(addr) => read_key(addr),
-            Setting::Service(_) | Setting::Task(_) | Setting::Hosts(_) | Setting::Firewall(_) => {
-                Err(Error::Invalid("RegistryKind cannot read this Setting"))
-            }
+            _ => Err(Error::Invalid("RegistryKind cannot read this Setting")),
         }
     }
 
@@ -42,9 +40,7 @@ impl EffectKind for RegistryKind {
         match s {
             Setting::Registry(addr) => drive_value(addr, target),
             Setting::RegistryKey(addr) => drive_key(addr, target),
-            Setting::Service(_) | Setting::Task(_) | Setting::Hosts(_) | Setting::Firewall(_) => {
-                Err(Error::Invalid("RegistryKind cannot drive this Setting"))
-            }
+            _ => Err(Error::Invalid("RegistryKind cannot drive this Setting")),
         }
     }
 }
@@ -63,24 +59,6 @@ fn guard_level(cx: &ExecCx) -> Result<(), Error> {
     match cx.level() {
         Level::User | Level::Admin => Ok(()),
         other => Err(Error::UnsupportedLevel(other)),
-    }
-}
-
-fn old_hive(hive: Hive) -> RegistryHive {
-    match hive {
-        Hive::Hklm => RegistryHive::Hklm,
-        Hive::Hkcu => RegistryHive::Hkcu,
-    }
-}
-
-fn old_type(ty: RegType) -> RegistryValueType {
-    match ty {
-        RegType::Dword => RegistryValueType::Dword,
-        RegType::Qword => RegistryValueType::Qword,
-        RegType::Sz => RegistryValueType::String,
-        RegType::ExpandSz => RegistryValueType::ExpandString,
-        RegType::MultiSz => RegistryValueType::MultiString,
-        RegType::Binary => RegistryValueType::Binary,
     }
 }
 
@@ -114,13 +92,13 @@ fn backend(e: BackendError) -> Error {
 /// stored type that disagrees with `addr.ty` -> `Err(TypeMismatch)`, never a fake absence).
 /// `detect_value_type` already collapses "key missing" and "value missing" into `None` for us.
 fn read_raw(addr: &RegAddr) -> Result<Option<TypedRegValue>, Error> {
-    let hive = old_hive(addr.hive);
+    let hive = RegistryHive::from(addr.hive);
     let Some(actual) =
         registry_service::detect_value_type(&hive, &addr.path, &addr.name).map_err(backend)?
     else {
         return Ok(None);
     };
-    let expected = old_type(addr.ty);
+    let expected = RegistryValueType::from(addr.ty);
     if actual != expected {
         return Err(Error::TypeMismatch {
             path: addr.path.clone(),
@@ -198,7 +176,7 @@ fn typed_string(ty: RegType, text: String) -> Result<TypedRegValue, Error> {
 }
 
 fn read_key(addr: &KeyAddr) -> Result<Value, Error> {
-    let hive = old_hive(addr.hive);
+    let hive = RegistryHive::from(addr.hive);
     let exists = registry_service::key_exists(&hive, &addr.path).map_err(backend)?;
     Ok(Value::Present(exists))
 }
@@ -213,7 +191,7 @@ fn drive_value(addr: &RegAddr, target: &Value) -> Result<(), Error> {
 }
 
 fn drive_whole_value(addr: &RegAddr, target: &Value) -> Result<(), Error> {
-    let hive = old_hive(addr.hive);
+    let hive = RegistryHive::from(addr.hive);
     match target {
         Value::Absent => delete_ok(registry_service::delete_value(
             &hive, &addr.path, &addr.name,
@@ -283,7 +261,7 @@ pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<
     match s {
         Setting::Registry(addr) if addr.field.is_some() => Err(Error::UnsupportedLevel(level)),
         Setting::Registry(addr) => {
-            let hive = old_hive(addr.hive);
+            let hive = RegistryHive::from(addr.hive);
             match target {
                 Value::Absent => Ok(BrokerOp::RegDeleteValue {
                     hive,
@@ -294,7 +272,7 @@ pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<
                     hive,
                     key: addr.path.clone(),
                     value_name: addr.name.clone(),
-                    value_type: old_type(addr.ty),
+                    value_type: RegistryValueType::from(addr.ty),
                     value: broker_reg_value(v),
                 }),
                 _ => Err(Error::Invalid(
@@ -303,7 +281,7 @@ pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<
             }
         }
         Setting::RegistryKey(addr) => {
-            let hive = old_hive(addr.hive);
+            let hive = RegistryHive::from(addr.hive);
             match target {
                 Value::Present(true) => Ok(BrokerOp::RegCreateKey {
                     hive,
@@ -321,9 +299,7 @@ pub(crate) fn to_broker_op(s: &Setting, target: &Value, level: Level) -> Result<
                 )),
             }
         }
-        Setting::Service(_) | Setting::Task(_) | Setting::Hosts(_) | Setting::Firewall(_) => {
-            Err(Error::Invalid("RegistryKind cannot drive this Setting"))
-        }
+        _ => Err(Error::Invalid("RegistryKind cannot drive this Setting")),
     }
 }
 
@@ -342,7 +318,8 @@ fn broker_reg_value(v: &TypedRegValue) -> serde_json::Value {
 fn drive_key(addr: &KeyAddr, target: &Value) -> Result<(), Error> {
     match target {
         Value::Present(true) => {
-            registry_service::create_key(&old_hive(addr.hive), &addr.path).map_err(backend)
+            registry_service::create_key(&RegistryHive::from(addr.hive), &addr.path)
+                .map_err(backend)
         }
         Value::Present(false) => {
             refuse_if_holds_values(addr)?;
@@ -356,7 +333,7 @@ fn drive_key(addr: &KeyAddr, target: &Value) -> Result<(), Error> {
 
 fn delete_key_tree(addr: &KeyAddr) -> Result<(), Error> {
     delete_ok(registry_service::delete_key(
-        &old_hive(addr.hive),
+        &RegistryHive::from(addr.hive),
         &addr.path,
     ))
     .map_err(backend)
@@ -364,7 +341,9 @@ fn delete_key_tree(addr: &KeyAddr) -> Result<(), Error> {
 
 /// Capture records only a key's presence, so a restore could not bring back values deleted with it.
 fn refuse_if_holds_values(addr: &KeyAddr) -> Result<(), Error> {
-    if registry_service::subtree_has_values(&old_hive(addr.hive), &addr.path).map_err(backend)? {
+    if registry_service::subtree_has_values(&RegistryHive::from(addr.hive), &addr.path)
+        .map_err(backend)?
+    {
         log::warn!(
             "Refusing to delete {:?}\\{}: values exist beneath it",
             addr.hive,
@@ -400,7 +379,12 @@ fn drive_field(addr: &RegAddr, field: &FieldAddr, target: &Value) -> Result<(), 
     }
 
     let wrapped = typed_string(addr.ty, parse::serialize_packed(field.format, &fields))?;
-    write_typed(&old_hive(addr.hive), &addr.path, &addr.name, &wrapped)
+    write_typed(
+        &RegistryHive::from(addr.hive),
+        &addr.path,
+        &addr.name,
+        &wrapped,
+    )
 }
 
 #[cfg(test)]

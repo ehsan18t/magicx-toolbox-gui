@@ -21,8 +21,10 @@ use crate::services::elevation::{
 };
 use crate::tweaks::kinds::{
     action::ActionKind,
+    audit::{self, AuditKind},
     firewall::FirewallKind,
     hosts::HostsKind,
+    power::{self, PowerKind},
     registry::{self, RegistryKind},
     service::{self, ServiceKind},
     task::{self, TaskKind},
@@ -69,10 +71,9 @@ fn broker_ops_for(
         }
         Setting::Service(_) => service::to_broker_ops(s, target),
         Setting::Task(_) => task::to_broker_ops(s, target),
-        // No BrokerOp exists for Hosts/Firewall in this build (spec §9's mechanical translation
-        // list does not cover them). The in-process kinds refuse Ti themselves, so this
-        // is the same refusal, raised one layer earlier.
-        Setting::Hosts(_) | Setting::Firewall(_) => Err(KindError::UnsupportedLevel(level)),
+        // No BrokerOp carries these. The in-process kinds refuse Ti themselves, so this is the same
+        // refusal, raised one layer earlier.
+        _ => Err(KindError::UnsupportedLevel(level)),
     }
 }
 
@@ -110,6 +111,8 @@ impl EffectKind for AllKinds {
             Setting::Task(_) => TaskKind.read(s, cx),
             Setting::Hosts(_) => HostsKind.read(s, cx),
             Setting::Firewall(_) => FirewallKind.read(s, cx),
+            Setting::Power(_) => PowerKind(&power::Native).read(s, cx),
+            Setting::Audit(_) => AuditKind(&audit::Native).read(s, cx),
         }
     }
 
@@ -121,6 +124,8 @@ impl EffectKind for AllKinds {
                 Setting::Task(_) => TaskKind.drive(s, target, cx),
                 Setting::Hosts(_) => HostsKind.drive(s, target, cx),
                 Setting::Firewall(_) => FirewallKind.drive(s, target, cx),
+                Setting::Power(_) => PowerKind(&power::Native).drive(s, target, cx),
+                Setting::Audit(_) => AuditKind(&audit::Native).drive(s, target, cx),
             },
             level @ Level::Ti => {
                 drive_via_broker(level, broker_ops_for(self, s, target, false, cx)?)

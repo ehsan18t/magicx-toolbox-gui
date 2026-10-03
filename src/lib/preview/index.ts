@@ -7,6 +7,7 @@ import type {
   EntrySummary,
   LogLine,
   ObservedState,
+  SystemReading,
   TweakEffectOption,
   TweakStatusEvent,
   TweakStatusView,
@@ -169,7 +170,7 @@ function stamped(id: string): TweakStatusView {
 function update(id: string, patch: Partial<TweakStatusView>): TweakStatusView {
   const view = { ...statuses.get(id)!, ...patch, stamp: ++stamp };
   statuses.set(id, view);
-  void emit("tweak-status", { tweak_id: id, status: view } satisfies TweakStatusEvent);
+  void emit("tweak-status", [{ tweak_id: id, status: view }] satisfies TweakStatusEvent[]);
   return view;
 }
 
@@ -177,7 +178,7 @@ function streamStatuses(): void {
   tweaks.forEach((t, i) => {
     if (t.id === NEVER_LOADS) return;
     setTimeout(
-      () => void emit("tweak-status", { tweak_id: t.id, status: stamped(t.id) } satisfies TweakStatusEvent),
+      () => void emit("tweak-status", [{ tweak_id: t.id, status: stamped(t.id) }] satisfies TweakStatusEvent[]),
       150 + i * 30,
     );
   });
@@ -272,7 +273,6 @@ function plugin(cmd: string, args: Args): unknown {
       console.info("[preview] open", args.url ?? args.path);
       return null;
     case "dialog":
-    case "process":
     case "webview":
       return null;
   }
@@ -280,7 +280,7 @@ function plugin(cmd: string, args: Args): unknown {
 }
 
 const MOCKED = [
-  "show_main_window",
+  "set_window_background",
   "cancel_manual_test",
   "install_update",
   "reveal_last_export",
@@ -326,7 +326,7 @@ export function installPreview(admin: boolean): void {
       const id = (args.tweakId ?? args.appId) as string;
       if (isMocked(cmd))
         switch (cmd) {
-          case "show_main_window":
+          case "set_window_background":
           case "cancel_manual_test":
           case "install_update":
           case "reveal_last_export":
@@ -335,8 +335,10 @@ export function installPreview(admin: boolean): void {
           case "restart_as_admin":
             location.search = "?preview";
             return null;
-          case "get_system_info":
-            return systemInfo(admin);
+          case "get_system_info": {
+            const { hardware, device, ...live } = systemInfo(admin);
+            return { live, machine: args.withHardware ? { hardware, device } : null } satisfies SystemReading;
+          }
           case "get_elevation_state":
             return { level: admin ? "Admin" : "User", sid_mismatch: false };
           case "get_categories":
