@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Checkbox, DISABLED } from "$lib/components/ui";
+  import { Checkbox, DIMMED, DISABLED } from "$lib/components/ui";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -25,6 +25,7 @@
   class={[
     "flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors focus-visible:bg-muted focus-visible:-outline-offset-2 enabled:hover:bg-muted",
     DISABLED,
+    !checked && DIMMED,
   ]}
 >
   <Checkbox {checked} />
