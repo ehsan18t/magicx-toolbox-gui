@@ -3,6 +3,24 @@
 /* An aria-disabled control (focusable, with its reason) reacts no more than a natively disabled one. */
 @custom-variant enabled (&:enabled:not([aria-disabled="true"]));
 
+/* Scroll-state container queries exist from Chromium 133. */
+@custom-variant scroll-state {
+  @supports (container-type: scroll-state) {
+    @slot;
+  }
+}
+/* Inside a scroll-state-container: content hidden above / below. */
+@custom-variant scrollable-top {
+  @container scroll-state(scrollable: top) {
+    @slot;
+  }
+}
+@custom-variant scrollable-bottom {
+  @container scroll-state(scrollable: bottom) {
+    @slot;
+  }
+}
+
 @layer base {
   /* Navy neutrals; dark is the default theme. Layers lighten upward: base, content, card. */
   :root,
@@ -378,6 +396,11 @@
 /* A pressed control shrinks by two motion steps. */
 @utility scale-pressed {
   scale: calc(1 - 2 * var(--motion-scale-delta));
+}
+
+/* Descendants style off this scroller's overflow; the scroller itself cannot query it. */
+@utility scroll-state-container {
+  container-type: scroll-state;
 }
 
 @utility scrollbar-none {
