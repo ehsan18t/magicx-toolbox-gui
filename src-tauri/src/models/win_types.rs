@@ -1,12 +1,13 @@
 //! Primitive-facing Windows types (hive, value, startup, action) spoken by the `services`
 //! primitives and the elevation broker wire protocol. Kept separate from `tweaks::model`
-//! (`Hive`/`RegType`, the compiled-corpus form); the kinds translate between the two (e.g.
-//! `tweaks/kinds/registry.rs`'s `old_hive`/`old_type`).
+//! (`Hive`/`RegType`, the compiled-corpus form); the `From` impls below translate between the two.
 
 use serde::{Deserialize, Serialize};
 
-/// Registry hive types.
+use crate::tweaks::model::{FwAction, FwDirection, FwProtocol, Hive, RegType};
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum RegistryHive {
     #[serde(rename = "HKCU")]
     Hkcu,
@@ -23,8 +24,8 @@ impl RegistryHive {
     }
 }
 
-/// Registry value types.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum RegistryValueType {
     #[serde(rename = "REG_DWORD")]
     Dword,
@@ -104,13 +105,11 @@ impl ServiceStartupType {
     }
 }
 
-/// Action to perform on a scheduled task.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum SchedulerAction {
-    /// Enable a disabled scheduled task
     Enable,
-    /// Disable a scheduled task
     Disable,
 }
 
@@ -123,13 +122,11 @@ impl SchedulerAction {
     }
 }
 
-/// Action to perform on a hosts file entry.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum HostsAction {
-    /// Add entry (or ensure it exists)
     Add,
-    /// Remove entry if it exists
     Remove,
 }
 
@@ -160,13 +157,11 @@ pub struct HostsChange {
     pub skip_validation: bool,
 }
 
-/// Direction for firewall rules.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum FirewallDirection {
-    /// Inbound traffic
     Inbound,
-    /// Outbound traffic
     Outbound,
 }
 
@@ -179,13 +174,11 @@ impl FirewallDirection {
     }
 }
 
-/// Action for firewall rules.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum FirewallRuleAction {
-    /// Block traffic
     Block,
-    /// Allow traffic
     Allow,
 }
 
@@ -198,19 +191,14 @@ impl FirewallRuleAction {
     }
 }
 
-/// Protocol for firewall rules.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum FirewallProtocol {
-    /// Any protocol
     Any,
-    /// TCP only
     Tcp,
-    /// UDP only
     Udp,
-    /// ICMP
     Icmpv4,
-    /// ICMPv6
     Icmpv6,
 }
 
@@ -226,13 +214,11 @@ impl FirewallProtocol {
     }
 }
 
-/// Firewall change operation type.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum FirewallOperation {
-    /// Create a new firewall rule
     Create,
-    /// Delete an existing firewall rule by name
     Delete,
 }
 
@@ -283,4 +269,56 @@ pub struct FirewallChange {
     /// If true, skip this change for tweak status validation
     #[serde(default)]
     pub skip_validation: bool,
+}
+
+impl From<Hive> for RegistryHive {
+    fn from(hive: Hive) -> Self {
+        match hive {
+            Hive::Hklm => Self::Hklm,
+            Hive::Hkcu => Self::Hkcu,
+        }
+    }
+}
+
+impl From<RegType> for RegistryValueType {
+    fn from(ty: RegType) -> Self {
+        match ty {
+            RegType::Dword => Self::Dword,
+            RegType::Qword => Self::Qword,
+            RegType::Sz => Self::String,
+            RegType::ExpandSz => Self::ExpandString,
+            RegType::MultiSz => Self::MultiString,
+            RegType::Binary => Self::Binary,
+        }
+    }
+}
+
+impl From<FwDirection> for FirewallDirection {
+    fn from(d: FwDirection) -> Self {
+        match d {
+            FwDirection::Inbound => Self::Inbound,
+            FwDirection::Outbound => Self::Outbound,
+        }
+    }
+}
+
+impl From<FwAction> for FirewallRuleAction {
+    fn from(a: FwAction) -> Self {
+        match a {
+            FwAction::Block => Self::Block,
+            FwAction::Allow => Self::Allow,
+        }
+    }
+}
+
+impl From<FwProtocol> for FirewallProtocol {
+    fn from(p: FwProtocol) -> Self {
+        match p {
+            FwProtocol::Any => Self::Any,
+            FwProtocol::Tcp => Self::Tcp,
+            FwProtocol::Udp => Self::Udp,
+            FwProtocol::Icmpv4 => Self::Icmpv4,
+            FwProtocol::Icmpv6 => Self::Icmpv6,
+        }
+    }
 }

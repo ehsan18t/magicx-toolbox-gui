@@ -21,6 +21,7 @@ const reg = (change: Partial<RegistryChange>): RegistryChange => ({
   action: "set",
   value_type: "REG_DWORD",
   value: 1,
+  skip_validation: false,
   ...change,
 });
 
@@ -86,12 +87,19 @@ test("an untouched setting leaves the option's cell null, and rows sort by kind"
   const rows = buildMatrix(
     [
       option("a", {
-        firewall_changes: [{ name: "Rule", operation: "create", action: "block", direction: "outbound" }],
-        hosts_changes: [{ ip: "0.0.0.0", domain: "ads.example", action: "add" }],
-        scheduler_changes: [{ task_path: "\\Microsoft\\Windows\\Task", action: "disable" }],
-        service_changes: [{ name: "Svc", startup: "automatic_delayed" }],
+        firewall_changes: [
+          { name: "Rule", operation: "create", action: "block", direction: "outbound", skip_validation: false },
+        ],
+        hosts_changes: [{ ip: "0.0.0.0", domain: "ads.example", action: "add", skip_validation: false }],
+        scheduler_changes: [{ task_path: "\\Microsoft\\Windows\\Task", action: "disable", skip_validation: false }],
+        service_changes: [{ name: "Svc", startup: "automatic_delayed", skip_validation: false }],
       }),
-      option("b", { registry_changes: [reg({})], firewall_changes: [{ name: "rule", operation: "delete" }] }),
+      option("b", {
+        registry_changes: [reg({})],
+        firewall_changes: [
+          { name: "rule", operation: "delete", direction: "inbound", action: "block", skip_validation: false },
+        ],
+      }),
     ],
     null,
   );
@@ -112,7 +120,10 @@ test("an untouched setting leaves the option's cell null, and rows sort by kind"
 test("the observed state fills the now column and can add a row", () => {
   const rows = buildMatrix(
     [option("On", { registry_changes: [reg({ value: 1 })] })],
-    option("now", { registry_changes: [reg({ value: 0 })], service_changes: [{ name: "Svc", startup: "manual" }] }),
+    option("now", {
+      registry_changes: [reg({ value: 0 })],
+      service_changes: [{ name: "Svc", startup: "manual", skip_validation: false }],
+    }),
   );
   assert.deepEqual(rows[0].now, { text: "0 (0x0)", note: undefined });
   assert.deepEqual(rows[1].cells, [null]);

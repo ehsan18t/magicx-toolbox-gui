@@ -14,7 +14,6 @@ const UNKNOWN_WINDOWS: WindowsInfo = {
   product_name: "Windows",
   uptime_seconds: 0,
   is_windows_11: false,
-  is_windows_server: false,
   install_date: null,
 };
 

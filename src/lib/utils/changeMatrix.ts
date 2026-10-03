@@ -114,7 +114,7 @@ function matrixEntries(o: TweakEffectOption): MatrixEntry[] {
       cell:
         c.operation === "delete"
           ? { text: "Removed", removal: true }
-          : { text: [humanize(c.action ?? "block"), c.direction].filter(Boolean).join(" ") },
+          : { text: `${humanize(c.action)} ${c.direction}` },
     })),
   ];
 }

@@ -36,10 +36,10 @@
     "test": "node --import ./scripts/test-loader.mjs --test \"src/**/*.test.ts\"",
     "lint:fix": "eslint ./src --fix",
     "lint:rust": "cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings",
-    "test:rust": "cd src-tauri && cargo test --all-targets",
+    "test:rust": "cd src-tauri && cargo test --all-targets --features test-build",
     "lint:rust:fix": "cd src-tauri && cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged",
     "type-check": "tsc --noEmit",
-    "validate": "pnpm run format:check && pnpm run type-check && pnpm run check && pnpm run format:rust:check && pnpm run lint:rust && pnpm run lint && pnpm run test && pnpm run test:rust",
+    "validate": "pnpm run format:check && pnpm run test:rust && pnpm run type-check && pnpm run check && pnpm run format:rust:check && pnpm run lint:rust && pnpm run lint && pnpm run test",
     "tauri": "tauri"
   },
   "dependencies": {

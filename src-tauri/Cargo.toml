@@ -43,6 +43,8 @@ serde_yaml_bw = "2.5"
 # runtime + `#[tokio::test]`) — kept off the shipped binary's [dependencies] entry above, which
 # only needs the `Mutex` type itself, never a runtime to drive one.
 tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "macros"] }
+# IPC types export to src/lib/types/generated/ during `cargo test`; never linked into the app.
+ts-rs = "^12.0.1"
 
 [dependencies]
 tauri = { version = "2", features = [] }

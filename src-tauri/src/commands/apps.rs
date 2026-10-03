@@ -23,12 +23,32 @@ const OTHER_ACCOUNT: &str =
     "Another account elevated this app, so this check would read that account's install";
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct InstallView {
-    pub kind: &'static str,
+    pub kind: InstallKind,
     pub id: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum InstallKind {
+    Store,
+    Winget,
+    StorePage,
+}
+
+/// `appx` removes for every account; `script` acts on the running account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "lowercase")]
+pub enum AppSourceKind {
+    Appx,
+    Script,
+}
+
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct AppView {
     pub id: String,
     pub name: String,
@@ -37,8 +57,7 @@ pub struct AppView {
     pub warning: Option<String>,
     pub category: String,
     pub risk: RiskLevel,
-    /// `appx` removes for every account; `script` acts on the running account.
-    pub source: &'static str,
+    pub source: AppSourceKind,
     pub install: Option<InstallView>,
     pub remove_availability: Availability,
     pub install_availability: Availability,
@@ -47,6 +66,7 @@ pub struct AppView {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct AppStatusView {
     pub app_id: String,
     pub presence: AppPresence,
@@ -110,18 +130,22 @@ pub(super) fn app_view(app: &AppDef, level: Level, sid: SidCheck, winver: &WinVe
         category: app.category.clone(),
         risk: app.risk_level,
         supported: in_scope(app, winver),
-        source: if is_script(app) { "script" } else { "appx" },
+        source: if is_script(app) {
+            AppSourceKind::Script
+        } else {
+            AppSourceKind::Appx
+        },
         install: app.install.as_ref().map(|i| match i {
             InstallSource::Store(id) => InstallView {
-                kind: "store",
+                kind: InstallKind::Store,
                 id: id.clone(),
             },
             InstallSource::Winget(id) => InstallView {
-                kind: "winget",
+                kind: InstallKind::Winget,
                 id: id.clone(),
             },
             InstallSource::StorePage(id) => InstallView {
-                kind: "store_page",
+                kind: InstallKind::StorePage,
                 id: id.clone(),
             },
         }),

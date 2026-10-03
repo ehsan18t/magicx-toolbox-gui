@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 
 /// Elevation floor for a tweak or an individual effect (spec §9). Declared, never inferred.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum Level {
     User,
     Admin,
@@ -50,6 +51,7 @@ pub fn effective_level(floor: Level, step: Option<Level>) -> Level {
 
 /// Advisory impact rating shown to the user (spec §6.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum RiskLevel {
     Low,
     Medium,
@@ -184,6 +186,7 @@ pub enum Setting {
 
 /// A typed registry literal (spec §6.2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum TypedRegValue {
     Dword(u32),
     Qword(u64),
@@ -195,6 +198,7 @@ pub enum TypedRegValue {
 
 /// Service start type (spec §5.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum StartupType {
     Boot,
     System,
@@ -207,6 +211,7 @@ pub enum StartupType {
 /// The one value domain shared by capture, apply, detect, and restore (spec §5, invariant 1).
 /// `Missing` is capture-only (spec §5.4); the parser/validator enforce that, not this type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum Value {
     Absent,
     Missing,
@@ -302,14 +307,17 @@ pub enum ActionDef {
 /// Identifies one effect within a tweak's declared surface. Newtype (not a bare `String`) so it
 /// cannot be mixed up with a `SharedId` or an `OptLabel` at compile time.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct EffectId(pub String);
 
 /// Identifies a corpus-level shared setting (spec §6.5). Newtype for the same reason as `EffectId`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct SharedId(pub String);
 
 /// The display label of an authored option. Newtype for the same reason as `EffectId`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct OptLabel(pub String);
 
 // `Display` (not just `Debug`) on all three id newtypes: build-time `ValidationError` messages

@@ -10,6 +10,10 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands::logging::log_outcome;
 use crate::error::{Error, Result};
+use crate::models::win_types::{
+    FirewallDirection, FirewallOperation, FirewallProtocol, FirewallRuleAction, HostsAction,
+    RegistryHive, RegistryValueType, SchedulerAction,
+};
 use crate::services::system_info_service;
 use crate::services::ti_probe;
 use crate::tweaks::compiled_corpus;
@@ -25,9 +29,8 @@ use crate::tweaks::engine::{
     Phase, ProbeCache, RealActions, RealProbe,
 };
 use crate::tweaks::model::{
-    ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, FwAction, FwDirection, FwProtocol,
-    Hive, Level, Opt, OptLabel, OptValue, RegType, RiskLevel, Setting, SharedId, StartupType,
-    Tweak, TypedRegValue, Value,
+    ActionDef, CategoryDef, Corpus, Effect, EffectDef, EffectId, Level, Opt, OptLabel, OptValue,
+    RiskLevel, Setting, SharedId, StartupType, Tweak, TypedRegValue, Value,
 };
 use crate::tweaks::shared_claims::ClaimsStore;
 use crate::tweaks::snapshot::{
@@ -175,6 +178,7 @@ pub(crate) fn current_app_level() -> Level {
 
 /// Whether elevation and SID permit apply or restore now (ADR-0005); detection never consults it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Availability {
     Available,
@@ -376,6 +380,7 @@ fn map_snapshot_err(what: &str, e: SnapshotError) -> Error {
 /// this moment's [`Availability`] -- everything the frontend needs to render a tweak before any
 /// status has arrived from `get_statuses_stream`.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TweakView {
     pub id: String,
     pub name: String,
@@ -398,9 +403,9 @@ pub struct TweakView {
 }
 
 /// One option projected as the exact per-address changes it makes: the tweak's surface joined with
-/// this option's value per `EffectId`. The `*_changes` shapes mirror the frontend's detail types
-/// (`RegistryChange`/`ServiceChange`/…).
+/// this option's value per `EffectId`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TweakOptionView {
     pub label: String,
     pub registry_changes: Vec<RegistryChangeView>,
@@ -413,55 +418,112 @@ pub struct TweakOptionView {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct RegistryChangeView {
-    pub hive: String,
+    pub hive: RegistryHive,
     pub key: String,
     pub value_name: String,
-    /// `set` | `delete_value` | `delete_key` | `create_key`.
-    pub action: String,
-    pub value_type: Option<String>,
-    /// The concrete value this option writes (number / string / list), or null for a delete.
-    pub value: Option<serde_json::Value>,
+    pub action: RegistryAction,
+    pub value_type: Option<RegistryValueType>,
+    pub value: Option<RegistryValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub windows_versions: Option<Vec<u8>>,
     pub skip_validation: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryAction {
+    Set,
+    DeleteValue,
+    DeleteKey,
+    CreateKey,
+}
+
+/// REG_MULTI_SZ is a string list, REG_BINARY a byte list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(untagged)]
+pub enum RegistryValue {
+    Number(u64),
+    Text(String),
+    Lines(Vec<String>),
+    Bytes(Vec<u8>),
+}
+
+impl From<&TypedRegValue> for RegistryValue {
+    fn from(v: &TypedRegValue) -> Self {
+        match v {
+            TypedRegValue::Dword(n) => Self::Number(u64::from(*n)),
+            TypedRegValue::Qword(n) => Self::Number(*n),
+            TypedRegValue::Sz(s) | TypedRegValue::ExpandSz(s) => Self::Text(s.clone()),
+            TypedRegValue::MultiSz(items) => Self::Lines(items.clone()),
+            TypedRegValue::Binary(bytes) => Self::Bytes(bytes.clone()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ServiceChangeView {
     pub name: String,
-    pub startup: String,
+    pub startup: StartupView,
     pub skip_validation: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum StartupView {
+    Boot,
+    System,
+    Automatic,
+    AutomaticDelayed,
+    Manual,
+    Disabled,
+}
+
+impl From<StartupType> for StartupView {
+    fn from(s: StartupType) -> Self {
+        match s {
+            StartupType::Boot => Self::Boot,
+            StartupType::System => Self::System,
+            StartupType::Automatic => Self::Automatic,
+            StartupType::AutomaticDelayed => Self::AutomaticDelayed,
+            StartupType::Manual => Self::Manual,
+            StartupType::Disabled => Self::Disabled,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct SchedulerChangeView {
     pub task_path: String,
-    /// `enable` | `disable`.
-    pub action: String,
+    pub action: SchedulerAction,
     pub skip_validation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct HostsChangeView {
     pub ip: String,
     pub domain: String,
-    /// `add` | `remove`.
-    pub action: String,
+    pub action: HostsAction,
     pub skip_validation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export, optional_fields))]
 pub struct FirewallChangeView {
     pub name: String,
-    /// `create` | `delete`.
-    pub operation: String,
+    pub operation: FirewallOperation,
+    pub direction: FirewallDirection,
+    pub action: FirewallRuleAction,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub direction: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub protocol: Option<String>,
+    pub protocol: Option<FirewallProtocol>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub program: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -477,46 +539,6 @@ pub struct FirewallChangeView {
     pub skip_validation: bool,
 }
 
-fn hive_str(h: Hive) -> &'static str {
-    match h {
-        Hive::Hklm => "HKLM",
-        Hive::Hkcu => "HKCU",
-    }
-}
-
-fn reg_type_str(t: RegType) -> &'static str {
-    match t {
-        RegType::Dword => "REG_DWORD",
-        RegType::Qword => "REG_QWORD",
-        RegType::Sz => "REG_SZ",
-        RegType::ExpandSz => "REG_EXPAND_SZ",
-        RegType::MultiSz => "REG_MULTI_SZ",
-        RegType::Binary => "REG_BINARY",
-    }
-}
-
-fn startup_str(s: StartupType) -> &'static str {
-    match s {
-        StartupType::Boot => "boot",
-        StartupType::System => "system",
-        StartupType::Automatic => "automatic",
-        StartupType::AutomaticDelayed => "automatic_delayed",
-        StartupType::Manual => "manual",
-        StartupType::Disabled => "disabled",
-    }
-}
-
-fn reg_value_json(v: &TypedRegValue) -> serde_json::Value {
-    use serde_json::json;
-    match v {
-        TypedRegValue::Dword(n) => json!(n),
-        TypedRegValue::Qword(n) => json!(n),
-        TypedRegValue::Sz(s) | TypedRegValue::ExpandSz(s) => json!(s),
-        TypedRegValue::MultiSz(items) => json!(items),
-        TypedRegValue::Binary(bytes) => json!(bytes),
-    }
-}
-
 /// Appends the display change(s) for one `Setting` driven to `value` by this option.
 fn push_setting_change(
     setting: &Setting,
@@ -529,13 +551,9 @@ fn push_setting_change(
     match setting {
         Setting::Registry(a) => {
             let (action, value_type, val) = match value {
-                Value::Absent => ("delete_value", None, None),
-                Value::Reg(tv) => (
-                    "set",
-                    Some(reg_type_str(a.ty).to_string()),
-                    Some(reg_value_json(tv)),
-                ),
-                _ => ("set", Some(reg_type_str(a.ty).to_string()), None),
+                Value::Absent => (RegistryAction::DeleteValue, None, None),
+                Value::Reg(tv) => (RegistryAction::Set, Some(a.ty.into()), Some(tv.into())),
+                _ => (RegistryAction::Set, Some(a.ty.into()), None),
             };
             // Packed fields address a sub-field inside one value; show both so it isn't mistaken
             // for the whole value.
@@ -544,10 +562,10 @@ fn push_setting_change(
                 None => a.name.clone(),
             };
             o.registry_changes.push(RegistryChangeView {
-                hive: hive_str(a.hive).to_string(),
+                hive: a.hive.into(),
                 key: a.path.clone(),
                 value_name,
-                action: action.to_string(),
+                action,
                 value_type,
                 value: val,
                 windows_versions: win,
@@ -556,15 +574,15 @@ fn push_setting_change(
         }
         Setting::RegistryKey(k) => {
             let action = if matches!(value, Value::Present(true)) {
-                "create_key"
+                RegistryAction::CreateKey
             } else {
-                "delete_key"
+                RegistryAction::DeleteKey
             };
             o.registry_changes.push(RegistryChangeView {
-                hive: hive_str(k.hive).to_string(),
+                hive: k.hive.into(),
                 key: k.path.clone(),
                 value_name: String::new(),
-                action: action.to_string(),
+                action,
                 value_type: None,
                 value: None,
                 windows_versions: win,
@@ -575,7 +593,7 @@ fn push_setting_change(
             if let Value::Startup(st) = value {
                 o.service_changes.push(ServiceChangeView {
                     name: s.name.clone(),
-                    startup: startup_str(*st).to_string(),
+                    startup: (*st).into(),
                     skip_validation: skip,
                 });
             }
@@ -584,7 +602,11 @@ fn push_setting_change(
             if let Value::TaskEnabled(enabled) = value {
                 o.scheduler_changes.push(SchedulerChangeView {
                     task_path: t.path.clone(),
-                    action: if *enabled { "enable" } else { "disable" }.to_string(),
+                    action: if *enabled {
+                        SchedulerAction::Enable
+                    } else {
+                        SchedulerAction::Disable
+                    },
                     skip_validation: skip,
                 });
             }
@@ -594,7 +616,11 @@ fn push_setting_change(
                 o.hosts_changes.push(HostsChangeView {
                     ip: h.ip.clone(),
                     domain: h.domain.clone(),
-                    action: if *present { "add" } else { "remove" }.to_string(),
+                    action: if *present {
+                        HostsAction::Add
+                    } else {
+                        HostsAction::Remove
+                    },
                     skip_validation: skip,
                 });
             }
@@ -603,31 +629,14 @@ fn push_setting_change(
             if let Value::Present(present) = value {
                 o.firewall_changes.push(FirewallChangeView {
                     name: r.name.clone(),
-                    operation: if *present { "create" } else { "delete" }.to_string(),
-                    direction: Some(
-                        match r.direction {
-                            FwDirection::Inbound => "inbound",
-                            FwDirection::Outbound => "outbound",
-                        }
-                        .to_string(),
-                    ),
-                    action: Some(
-                        match r.action {
-                            FwAction::Block => "block",
-                            FwAction::Allow => "allow",
-                        }
-                        .to_string(),
-                    ),
-                    protocol: r.protocol.map(|p| {
-                        match p {
-                            FwProtocol::Any => "any",
-                            FwProtocol::Tcp => "tcp",
-                            FwProtocol::Udp => "udp",
-                            FwProtocol::Icmpv4 => "icmpv4",
-                            FwProtocol::Icmpv6 => "icmpv6",
-                        }
-                        .to_string()
-                    }),
+                    operation: if *present {
+                        FirewallOperation::Create
+                    } else {
+                        FirewallOperation::Delete
+                    },
+                    direction: r.direction.into(),
+                    action: r.action.into(),
+                    protocol: r.protocol.map(Into::into),
                     program: r.program.clone(),
                     service: r.service.clone(),
                     remote_addresses: r.remote_addresses.clone(),
@@ -677,10 +686,10 @@ fn option_view(tweak: &Tweak, opt: &Opt, corpus: &Corpus) -> TweakOptionView {
                         // A DeleteTree is a registry key removal; show it as one.
                         ActionDef::DeleteTree { key, .. } => {
                             o.registry_changes.push(RegistryChangeView {
-                                hive: hive_str(key.hive).to_string(),
+                                hive: key.hive.into(),
                                 key: key.path.clone(),
                                 value_name: String::new(),
-                                action: "delete_key".to_string(),
+                                action: RegistryAction::DeleteKey,
                                 value_type: None,
                                 value: None,
                                 windows_versions: None,
@@ -756,6 +765,7 @@ pub(super) fn tweak_view_with(
 /// guard's current reading (ADR-0005). `sid_mismatch` is `SidCheck::blocks_hkcu()`, true for
 /// `Undetermined` too; the per-tweak `Availability` carries the distinction.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ElevationState {
     pub level: Level,
     pub sid_mismatch: bool,
@@ -764,12 +774,14 @@ pub struct ElevationState {
 /// `tweak-status`'s event payload: one tweak's freshly detected status,
 /// emitted per-tweak by [`scan_and_emit`] -- never batched into one final blob.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TweakStatusEvent {
     pub tweak_id: String,
     pub status: TweakStatusView,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct TweakStatusView {
     pub state: TweakStateView,
     pub unavailable: Vec<UnavailableOptView>,
@@ -806,6 +818,7 @@ impl TweakStatusView {
 /// What the machine actually reads when it matches no authored option (ADR-0003). `changes` is a
 /// [`TweakOptionView`] so the UI renders it like the options it failed to match, not as a value dump.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ObservedStateView {
     pub changes: TweakOptionView,
     pub agreement: Vec<EffectAgreementView>,
@@ -814,6 +827,7 @@ pub struct ObservedStateView {
 /// Which authored options wanted the value one effect actually holds. Empty `wanted_by` means no
 /// option does; a surface split across several options is the usual reason nothing matched.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct EffectAgreementView {
     pub effect: EffectId,
     /// What the effect actually addresses on the machine (registry value, service, task, ...). The
@@ -885,6 +899,7 @@ fn observed_view(tweak: &Tweak, observed: &[ObservedEffect]) -> Option<ObservedS
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum TweakStateView {
     Active { option: OptLabel },
@@ -907,6 +922,7 @@ impl From<TweakState> for TweakStateView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct UnknownReasonView {
     pub effect: EffectId,
     pub cause: UnknownCauseView,
@@ -924,6 +940,7 @@ impl From<UnknownReason> for UnknownReasonView {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum UnknownCauseView {
     AccessDenied,
     Malformed,
@@ -943,6 +960,7 @@ impl From<UnknownCause> for UnknownCauseView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct UnavailableOptView {
     pub label: OptLabel,
     pub reason: String,
@@ -958,6 +976,7 @@ impl From<UnavailableOpt> for UnavailableOptView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct HeldInfoView {
     pub shared: SharedId,
     pub holders: Vec<String>,
@@ -973,6 +992,7 @@ impl From<HeldInfo> for HeldInfoView {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct ApplyOutcomeView {
     pub effects: Vec<EffectResultView>,
     pub status: TweakStatusView,
@@ -991,6 +1011,7 @@ impl ApplyOutcomeView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct EffectResultView {
     pub effect: EffectId,
     pub kind: EffectResultKindView,
@@ -1006,6 +1027,7 @@ impl From<EffectResult> for EffectResultView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EffectResultKindView {
     Driven { desired: Value },
@@ -1032,6 +1054,7 @@ impl From<EffectResultKind> for EffectResultKindView {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct RestoreOutcomeView {
     pub status: TweakStatusView,
     pub consumed: Option<Seq>,
@@ -1201,6 +1224,7 @@ pub async fn get_tweaks() -> Result<Vec<TweakView>> {
 /// Corpus category metadata (id + display name + icon + description) for the sidebar. The compiled
 /// corpus is the single source of truth; the frontend must not re-derive names from category ids.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct CategoryView {
     pub id: String,
     pub name: String,
@@ -1507,8 +1531,8 @@ mod tests {
     use crate::tweaks::engine::{ActionRunner, ProbeSource};
     use crate::tweaks::kinds::{EffectKind, Error as KindError, ExecCx};
     use crate::tweaks::model::{
-        ActionDef, BuildExpr, Effect, EffectDef, Opt, OptValue, RegAddr, RiskLevel as ModelRisk,
-        ScopedValue, Setting, StartupType, SvcAddr, WindowsScope,
+        ActionDef, BuildExpr, Effect, EffectDef, Hive, Opt, OptValue, RegAddr, RegType,
+        RiskLevel as ModelRisk, ScopedValue, Setting, StartupType, SvcAddr, WindowsScope,
     };
     use crate::tweaks::winver::WinVer;
     use std::collections::BTreeMap;
@@ -2390,7 +2414,10 @@ mod tests {
         let view = tweak_view(&t, &c, &WINVER, Level::User, SidCheck::SameUser);
         assert_eq!(view.options.len(), 1);
         assert_eq!(view.options[0].service_changes.len(), 1);
-        assert_eq!(view.options[0].service_changes[0].startup, "manual");
+        assert_eq!(
+            view.options[0].service_changes[0].startup,
+            StartupView::Manual
+        );
         assert!(view.options[0].registry_changes.is_empty());
     }
 
@@ -2432,12 +2459,12 @@ mod tests {
             "both theme values are surfaced"
         );
         for change in &view.registry_changes {
-            assert_eq!(change.hive, "HKCU");
-            assert_eq!(change.action, "set");
-            assert_eq!(change.value_type.as_deref(), Some("REG_DWORD"));
+            assert_eq!(change.hive, RegistryHive::Hkcu);
+            assert_eq!(change.action, RegistryAction::Set);
+            assert_eq!(change.value_type, Some(RegistryValueType::Dword));
             assert_eq!(
                 change.value,
-                Some(serde_json::json!(0)),
+                Some(RegistryValue::Number(0)),
                 "Dark sets each flag to 0"
             );
         }

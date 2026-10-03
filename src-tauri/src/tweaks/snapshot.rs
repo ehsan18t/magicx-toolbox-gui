@@ -25,21 +25,18 @@ const SEQ_CACHE_FILE: &str = "_seq.json";
 const ATTENTION_FILE: &str = "_attention.json";
 const ATTENTION_PREFIX: &str = "_attention";
 
-/// Monotonic per-tweak sequence number (spec §8.2) — never derived from wall-clock. Orders a
-/// tweak's history; `head`/`consume`/`discard`/`mark_completed` address entries by this alone.
-/// **Identity, never defaultable**: a missing `seq` must fail `Entry` deserialization outright
-/// (see `Entry`'s field-level `#[serde(default)]` note) — silently defaulting it would let content
-/// decide which file a write targets, exactly the bug `mark_completed`/`rewrite_entry` now guard
-/// against by taking `seq` as a trusted parameter instead of reading it back off the entry.
+/// Monotonic per-tweak sequence number (spec §8.2), never derived from wall-clock; entries are
+/// addressed by it alone. Identity, never defaultable: a defaulted `seq` would let content decide
+/// which file a write targets, so `mark_completed`/`rewrite_entry` take it as a trusted parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct Seq(pub u64);
 
-/// What one entry captured (spec §8.3). Authored-option captures store the reference only —
-/// restore re-derives from the *current* corpus (ADR-0007). Unauthored states (System Default,
-/// drift) store the full value map because they exist nowhere else. Never deduped against each
-/// other; only a repeated `OptionRef` dedups (spec §8.2, invariant 6). Identity data, not
-/// defaultable — see `Entry`'s field-level `#[serde(default)]` note.
+/// What one entry captured (spec §8.3): an authored option by reference only, since restore
+/// re-derives from the current corpus (ADR-0007); an unauthored state as its full value map. Only
+/// a repeated `OptionRef` dedups (spec §8.2, invariant 6). Identity data, never defaultable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum Captured {
     OptionRef(String),
     Values(BTreeMap<EffectId, Value>),
@@ -69,6 +66,7 @@ pub struct JournalRow {
 
 /// Which operation left the tweak in a state the user has to resolve (ADR-0001/0002).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum AttentionReason {
     ApplyFailed,
@@ -85,6 +83,7 @@ pub enum AttentionReason {
 /// What kind of step could not be verified, so the UI can tell a retryable drive from a one-way
 /// action or a store failure instead of re-parsing a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum AttentionKind {
     Drive,
@@ -101,12 +100,14 @@ pub enum AttentionKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct AttentionItem {
     #[serde(default)]
     pub effect: Option<EffectId>,
     pub kind: AttentionKind,
     /// Why the step failed, when the failure was classified. Absent in records from older builds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub class: Option<OpFailureClass>,
     /// The entries whose open drive mark this item accounts for (a drive-mark or `Unrecorded` item).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -117,6 +118,7 @@ pub struct AttentionItem {
 /// Needs Attention for one tweak, persisted in its own record so nothing that deletes an entry --
 /// dedup, a later verified rollback's `consume`, an entry turning invalid -- can drop it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct Attention {
     pub reason: AttentionReason,
     pub items: Vec<AttentionItem>,
@@ -220,8 +222,9 @@ pub struct RawEntry {
 }
 
 /// Why an entry cannot be a restore target (spec §8.3, ADR-0002). Never a deletion trigger by
-/// itself — `discard` is the only caller-driven removal.
+/// itself: `discard` is the only caller-driven removal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum InvalidReason {
     /// Unparseable JSON, or JSON missing/mistyping `schema_version` itself.
     Corrupt,
@@ -240,15 +243,17 @@ pub enum InvalidReason {
 
 /// The result of classifying one entry (spec §8.3, ADR-2). Never a deletion trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub enum EntryValidity {
     Valid,
     Invalid(InvalidReason),
 }
 
 /// One `list` row for UI surfacing (spec §8.3): full detail when the payload parsed, `None` fields
-/// when it was too corrupt to parse — it still carries a `seq` and a reason so the UI can offer
+/// when it was too corrupt to parse; it still carries a `seq` and a reason so the UI can offer
 /// `discard`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct EntrySummary {
     pub seq: Seq,
     pub validity: EntryValidity,

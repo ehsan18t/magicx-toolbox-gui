@@ -29,6 +29,7 @@ pub struct GitHubRelease {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
     pub available: bool,
@@ -39,6 +40,7 @@ pub struct UpdateInfo {
     pub published_at: Option<String>,
     pub asset_name: Option<String>,
     pub asset_size: Option<u64>,
+    /// GitHub's `sha256:<hex>`; an update without one is not installed.
     pub asset_digest: Option<String>,
     /// The offered release is marked pre-release on GitHub.
     pub prerelease: bool,
@@ -62,6 +64,7 @@ impl UpdateInfo {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateConfig {
     pub releases_api_url: String,
@@ -456,9 +459,11 @@ fn validate_asset_name(name: &str) -> Result<()> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadProgress {
     pub downloaded: u64,
+    /// Bytes; `None` when the server sends no size.
     pub total: Option<u64>,
 }
 
