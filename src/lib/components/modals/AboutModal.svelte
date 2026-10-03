@@ -19,11 +19,21 @@
 
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Button, ExternalLink, FLOATING_CLOSE, IconButton, iconButton, Modal, ModalTitle } from "$lib/components/ui";
+  import {
+    Button,
+    ExternalLink,
+    FLOATING_CLOSE,
+    IconButton,
+    iconButton,
+    Modal,
+    ModalTitle,
+    WIDE_DIALOG_INSET,
+  } from "$lib/components/ui";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
+  import { diagnosticsFacts, diagnosticsHeader, versionLabel } from "$lib/stores/diagnostics";
   import { modalStore } from "$lib/stores/modal.svelte";
+  import { toastStore } from "$lib/stores/toast.svelte";
   import { copyText } from "$lib/utils/clipboard";
-  import { diagnosticsFacts, diagnosticsHeader, versionLabel } from "$lib/utils/diagnostics";
   import { delay } from "$lib/utils/motion";
   import { onMount } from "svelte";
 
@@ -39,7 +49,10 @@
   });
 
   async function copyDetails() {
-    if (!(await copyText(diagnosticsHeader(), "Could not copy to the clipboard"))) return;
+    if (!(await copyText(diagnosticsHeader()))) {
+      toastStore.error("Could not copy to the clipboard");
+      return;
+    }
     copied = true;
     clearTimeout(copiedTimer);
     copiedTimer = setTimeout(() => (copied = false), delay("feedback"));
@@ -47,7 +60,7 @@
 </script>
 
 <Modal open={isOpen} onclose={modalStore.close} size="md">
-  <div class="relative overflow-y-auto px-7 pt-7 pb-6">
+  <div class={["relative overflow-y-auto pt-7 pb-6", WIDE_DIALOG_INSET]}>
     <IconButton icon="mdi:close" label="Close" class={FLOATING_CLOSE} onclick={modalStore.close} />
 
     <img src={APP_CONFIG.appIcon} alt="" class="block h-11 w-11" />

@@ -1,16 +1,13 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { card, CodeBlock, PanelHeading } from "$lib/components/ui";
+  import { card, CodeBlock, PanelSection } from "$lib/components/ui";
   import type { TweakEffectOption } from "$lib/types";
   import { plural } from "$lib/utils/format";
 
   let { options }: { options: TweakEffectOption[] } = $props();
-
-  const headingId = $props.id();
 </script>
 
-<section aria-labelledby={headingId}>
-  <PanelHeading id={headingId} icon="mdi:console" class="mb-2.5">Scripts</PanelHeading>
+<PanelSection title="Scripts" icon="mdi:console">
   <div class="space-y-1.5">
     {#each options as option (option.label)}
       <details class={card({ class: "group" })}>
@@ -31,4 +28,4 @@
       </details>
     {/each}
   </div>
-</section>
+</PanelSection>

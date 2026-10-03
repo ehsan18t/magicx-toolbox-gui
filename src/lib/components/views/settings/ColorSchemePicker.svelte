@@ -1,16 +1,14 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
+  import { radioKeyIndex } from "$lib/components/ui";
   import { COLOR_SCHEMES, colorSchemeStore } from "$lib/stores/colorScheme.svelte";
 
-  const STEP: Record<string, 1 | -1> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
-
   function handleKeydown(e: KeyboardEvent & { currentTarget: HTMLElement }) {
-    const step = STEP[e.key];
-    if (!step) return;
+    const from = COLOR_SCHEMES.findIndex((s) => s.id === colorSchemeStore.current);
+    const next = radioKeyIndex(COLOR_SCHEMES, from, e.key);
+    if (next === null) return;
     e.preventDefault();
-    const count = COLOR_SCHEMES.length;
-    const next = (COLOR_SCHEMES.findIndex((s) => s.id === colorSchemeStore.current) + step + count) % count;
     colorSchemeStore.set(COLOR_SCHEMES[next].id);
     e.currentTarget.querySelectorAll<HTMLElement>("[role='radio']")[next]?.focus();
   }
@@ -38,11 +36,10 @@
         "hover:scale-110 hover:ring-2 hover:ring-border-hover",
         selected && "scale-110 ring-2 ring-foreground-muted",
       ]}
-      style:background-color={scheme.color}
+      style:background-color="var(--swatch-{scheme.id})"
       use:tooltip={scheme.name}
       aria-label={scheme.name}
     >
-      <!-- The selected scheme is the live accent, so accent-foreground reads on its swatch. -->
       {#if selected}
         <Icon icon="mdi:check" size="3xs" class="animate-pop-in text-accent-foreground" />
       {/if}

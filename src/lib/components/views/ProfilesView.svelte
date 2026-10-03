@@ -7,7 +7,7 @@
   import { DROP_VEIL, HEADING, TONE_WASH } from "$lib/design";
   import { PageLayout, PageStats } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { Badge, Button, Callout, card, EmptyState, IconButton, IconTile } from "$lib/components/ui";
+  import { Badge, Button, Callout, card, EmptyState, IconButton, IconTile, Skeleton } from "$lib/components/ui";
   import { PROFILE_EXT } from "$lib/config/app";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
@@ -17,7 +17,6 @@
   import { SEP } from "$lib/utils/format";
   import { fade, pop, reflow } from "$lib/utils/motion";
   import { formatDate } from "$lib/utils/time";
-  import { open } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
 
   const profiles = $derived(profileStore.savedProfiles);
@@ -47,15 +46,8 @@
   }
 
   async function handleOpenFolder() {
-    try {
-      const selected = await open({ directory: true, multiple: false, title: "Select a profile folder" });
-      if (typeof selected === "string") {
-        profileStore.setProfileDir(selected);
-        toastStore.success(`Showing profiles from ${selected}`);
-      }
-    } catch (error) {
-      toastStore.failure("Failed to open the folder picker", error);
-    }
+    const dir = await profileStore.chooseFolder();
+    if (dir) toastStore.success(`Showing profiles from ${dir}`);
   }
 
   function handleResetFolder() {
@@ -121,7 +113,7 @@
     {#if profileStore.isLoadingSavedProfiles}
       <div class="space-y-2">
         {#each { length: SKELETON_CARDS }, i (i)}
-          <div class="h-24 animate-pulse rounded-lg bg-muted"></div>
+          <Skeleton class="h-24 rounded-lg" />
         {/each}
       </div>
     {:else if profileStore.savedProfilesError}

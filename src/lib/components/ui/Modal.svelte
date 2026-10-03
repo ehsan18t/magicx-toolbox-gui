@@ -14,6 +14,7 @@
 </script>
 
 <script lang="ts">
+  import { focusFallback, reclaimFocus } from "$lib/utils/focus";
   import type { Snippet } from "svelte";
   import { onDestroy, tick } from "svelte";
   import { setModalTitleId } from "./modalContext";
@@ -96,11 +97,9 @@
   function restoreFocus() {
     if (!previouslyFocusedEl) return;
     try {
-      // The opener can be gone (a discarded entry): fall back to the dialog still open beneath.
-      const fallback = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')]
-        .filter((el) => el !== modalEl)
-        .at(-1);
-      (previouslyFocusedEl.isConnected ? previouslyFocusedEl : fallback)?.focus();
+      // The opener can be gone or on its way out (a discarded entry): focus() is then a no-op.
+      previouslyFocusedEl.focus();
+      reclaimFocus(focusFallback(modalEl));
     } finally {
       previouslyFocusedEl = null;
     }

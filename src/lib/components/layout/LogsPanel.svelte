@@ -3,11 +3,11 @@
   import { Icon } from "$lib/components/shared";
   import { Badge, IconButton, SearchInput, Select, type SelectOption } from "$lib/components/ui";
   import { HEADING, type TextTone, TONE_TEXT } from "$lib/design";
+  import { diagnosticsHeader } from "$lib/stores/diagnostics";
   import { formatLogLine, gapLabel, isGap, LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import type { LogLevel, LogSource } from "$lib/types";
   import { copyText } from "$lib/utils/clipboard";
-  import { diagnosticsHeader } from "$lib/utils/diagnostics";
   import { expand } from "$lib/utils/motion";
   import type { Attachment } from "svelte/attachments";
 
@@ -67,7 +67,8 @@
   async function copyVisible() {
     const lines = visible.map((row) => (isGap(row) ? `[${gapLabel(row)}]` : formatLogLine(row)));
     const text = [diagnosticsHeader(), ...lines].join("\n") + "\n";
-    if (await copyText(text, "Could not copy the lines")) toastStore.success("Visible lines copied");
+    if (await copyText(text)) toastStore.success("Visible lines copied");
+    else toastStore.error("Could not copy the lines");
   }
 </script>
 

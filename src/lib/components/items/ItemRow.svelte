@@ -7,7 +7,7 @@
 </script>
 
 <script lang="ts">
-  import { Callout, HighlightedText, IconButton, indicator } from "$lib/components/ui";
+  import { Callout, HighlightedText, IconButton, indicator, META_LINE } from "$lib/components/ui";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import type { SearchResult } from "$lib/stores/search.svelte";
   import type { ItemKind } from "$lib/types";
@@ -68,9 +68,11 @@
   );
 </script>
 
+<!-- Out of the tab order, yet focusable: a search "Go to" focuses the row it scrolls to. -->
 <article
   id={rowDomId(kind, id)}
   bind:this={rowEl}
+  tabindex="-1"
   class={cn(
     "@container relative flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card transition-colors",
     BORDER[emphasis],
@@ -115,7 +117,7 @@
       </div>
     {/if}
 
-    <div class="mt-auto flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs">
+    <div class={["mt-auto", META_LINE]}>
       {@render meta()}
       {@render context?.()}
       <div class="ml-auto flex items-center gap-0.5">

@@ -4,7 +4,13 @@
   import { HEADING } from "$lib/design";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { availabilityTitle, heldSharedText, residueText, UNKNOWN_ICON } from "$lib/utils/tweakPresentation";
+  import {
+    availabilityTitle,
+    ELEVATE_REMEDY,
+    heldSharedText,
+    residueText,
+    UNKNOWN_ICON,
+  } from "$lib/utils/tweakPresentation";
   import AttentionNotice from "../AttentionNotice.svelte";
 
   let { tweak }: { tweak: TweakWithStatus } = $props();
@@ -42,7 +48,7 @@
         {#each status.unknownReasons as reason, i (`${reason.effect}-${i}`)}
           <li class="text-xs text-foreground-muted">
             <span class="font-mono break-all text-foreground">{reason.effect}</span>
-            ({reason.cause}{reason.needs_elevation ? ", restart as admin to resolve" : ""})
+            ({reason.cause}{reason.needs_elevation ? `, ${ELEVATE_REMEDY}` : ""})
           </li>
         {/each}
       </ul>

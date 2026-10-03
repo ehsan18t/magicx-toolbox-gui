@@ -2,6 +2,7 @@
   import { Card, Spinner } from "$lib/components/ui";
   import { HEADING } from "$lib/design";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
+  import { reclaimFocus } from "$lib/utils/focus";
   import { delay, fade } from "$lib/utils/motion";
   import { untrack } from "svelte";
   import { BUSY_HINT } from "./busy";
@@ -27,7 +28,7 @@
     return () => clearTimeout(hideTimer);
   });
 
-  // Inert drops focus to the body, so it goes back where it was if that control is still there.
+  // Inert drops focus to the body, so it goes back where it was, or to the fallback if that control is gone.
   $effect(() => {
     if (!visible || !shell) return;
     const blocked = shell;
@@ -35,7 +36,8 @@
     blocked.inert = true;
     return () => {
       blocked.inert = false;
-      if (focused instanceof HTMLElement && focused.isConnected) focused.focus();
+      if (focused instanceof HTMLElement) focused.focus();
+      reclaimFocus();
     };
   });
 

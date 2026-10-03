@@ -1,5 +1,5 @@
 // The tweak model (`get_tweaks`), its categories, and live per-tweak statuses filled in incrementally
-// from the `tweak-status` event stream (spec §8.4).
+// from the `tweak-status` event stream.
 
 import * as tweaksApi from "$lib/api/tweaks";
 import { type IconName, isIconName } from "$lib/design";
@@ -214,7 +214,7 @@ function queueStatus(tweakId: string, view: TweakStatusView) {
   flushFrame ||= requestAnimationFrame(flushStatuses);
 }
 
-let isStreamStarted = false;
+let listening: Promise<unknown> | null = null;
 
 export const tweaksStore = {
   /** Visible tweaks: unsupported ones only when the setting shows them. */
@@ -269,11 +269,15 @@ export const tweaksStore = {
 
   /** Registers the `tweak-status` listener once, then kicks the background scan. */
   async streamStatuses(): Promise<void> {
-    if (!isStreamStarted) {
-      isStreamStarted = true;
-      // Registered before the scan starts, so no early event is missed.
-      await tweaksApi.onTweakStatus((event) => queueStatus(event.tweak_id, event.status));
-    }
+    // Shared, so a concurrent call also waits for it; reset on failure, so a retry registers again.
+    listening ??= tweaksApi
+      .onTweakStatus((event) => queueStatus(event.tweak_id, event.status))
+      .catch((error: unknown) => {
+        listening = null;
+        throw error;
+      });
+    // Registered before the scan starts, so no early event is missed.
+    await listening;
     await tweaksApi.getStatusesStream();
   },
 };

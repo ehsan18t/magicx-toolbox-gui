@@ -14,7 +14,7 @@
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import type { AttentionItem, TweakWithStatus } from "$lib/types";
-  import { attentionCause, ensureSentence } from "$lib/utils/tweakPresentation";
+  import { attentionCause, ELEVATE_REMEDY, ensureSentence } from "$lib/utils/tweakPresentation";
   import RestoreButton from "./RestoreButton.svelte";
 
   interface Props {
@@ -33,7 +33,7 @@
   function itemHint(item: AttentionItem): string {
     if (item.kind === "no_undo") return "(this one cannot be retried)";
     if (item.class === "busy") return "(retrying later may succeed)";
-    if (item.class === "access_denied" && elevationStore.level === "User") return "(restart as administrator to retry)";
+    if (item.class === "access_denied" && elevationStore.level === "User") return `(${ELEVATE_REMEDY})`;
     return "";
   }
 

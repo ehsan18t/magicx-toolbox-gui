@@ -12,7 +12,11 @@ export function searchHighlight(id: () => string, el: () => HTMLElement | null) 
     searchStore.setHighlight(null);
     active = true;
     // After a frame: rows above are still settling their height on first render.
-    frame = requestAnimationFrame(() => el()?.scrollIntoView({ block: "center" }));
+    frame = requestAnimationFrame(() => {
+      const row = el();
+      row?.scrollIntoView({ block: "center" });
+      row?.focus({ preventScroll: true });
+    });
     clearTimeout(timer);
     timer = setTimeout(() => (active = false), duration("highlight"));
   });

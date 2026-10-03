@@ -3,8 +3,10 @@
   import { Button, IconButton } from "$lib/components/ui";
   import { TONE_TINT } from "$lib/design";
   import { pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
+  import { reclaimFocus } from "$lib/utils/focus";
   import { plural } from "$lib/utils/format";
   import { expand } from "$lib/utils/motion";
+  import { tick } from "svelte";
   import type { Attachment } from "svelte/attachments";
 
   // app.css's toast offset reads it, so toasts sit below the banner however it wraps.
@@ -13,6 +15,12 @@
   let showDetails = $state(false);
 
   const rebootCount = $derived(pendingRebootStore.count);
+
+  async function dismiss() {
+    pendingRebootStore.clear();
+    await tick();
+    reclaimFocus();
+  }
 
   const publishHeight: Attachment<HTMLElement> = (node) => {
     const rootStyle = document.documentElement.style;
@@ -51,7 +59,7 @@
           size="sm"
           label="Dismiss restart notice"
           tooltip="Dismiss (changes still apply after restart)"
-          onclick={() => pendingRebootStore.clear()}
+          onclick={dismiss}
         />
       </div>
     </div>

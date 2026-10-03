@@ -7,7 +7,8 @@
   import { type IconName, type TextTone, TONE_TEXT } from "$lib/design";
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { Card, IconButton, Meter, rowButton, SectionCard } from "$lib/components/ui";
+  import { Card, IconButton, Meter, rowButton, SectionCard, Skeleton } from "$lib/components/ui";
+  import { elevationStore } from "$lib/stores/elevation.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { systemStore } from "$lib/stores/system.svelte";
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
@@ -102,7 +103,7 @@
 <PageLayout
   title="Overview"
   description={info
-    ? `${info.computer_name}${SEP}${info.username} (${info.is_admin ? "Administrator" : "Standard user"})`
+    ? `${info.computer_name}${SEP}${info.username}${elevationStore.runningAs ? ` (${elevationStore.runningAs})` : ""}`
     : "Your PC at a glance"}
 >
   <Card as="section" class="grid grid-cols-2 gap-px overflow-hidden bg-border sm:grid-cols-4" aria-label="Your tweaks">
@@ -190,7 +191,7 @@
         {#if systemLoading || !rows}
           <div class="space-y-2 p-3">
             {#each SKELETON_WIDTHS as width (width)}
-              <div class="h-4 animate-pulse rounded bg-muted" style:width="{width}%"></div>
+              <Skeleton class="h-4" style="width: {width}%" />
             {/each}
           </div>
         {:else}

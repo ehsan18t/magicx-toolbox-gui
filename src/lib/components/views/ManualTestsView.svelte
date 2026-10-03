@@ -57,7 +57,8 @@
   }
 
   async function copyReport(id: string) {
-    if (await copyText(manualTestsStore.report(id), "Could not copy the report")) toastStore.success("Report copied");
+    if (await copyText(manualTestsStore.report(id))) toastStore.success("Report copied");
+    else toastStore.error("Could not copy the report");
   }
 </script>
 

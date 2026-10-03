@@ -54,6 +54,13 @@ export const CHIP_TINT: Record<FillTone, string> = {
   error: "border-error/40 bg-error/10 text-error enabled:hover:bg-error/15",
 };
 
+/** A quiet chip's hover: its border hints the tone it switches to. */
+export const CHIP_QUIET_HOVER: Record<FillTone, string> = {
+  accent: "enabled:hover:border-accent/50",
+  warning: "enabled:hover:border-warning/50",
+  error: "enabled:hover:border-error/50",
+};
+
 /** Switched on: solid fill with its foreground text, e.g. a chip or a count pill. */
 export const CHIP_SOLID: Record<FillTone, string> = {
   accent: "border-accent bg-accent text-accent-foreground",

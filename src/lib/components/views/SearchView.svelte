@@ -1,8 +1,8 @@
 <script lang="ts">
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { AppRow, MetaItem, TweakRow } from "$lib/components/items";
-  import { EmptyState, LinkButton } from "$lib/components/ui";
+  import { AppRow, TweakRow } from "$lib/components/items";
+  import { EmptyState, LinkButton, MetaItem } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { type SearchResult, searchStore } from "$lib/stores/search.svelte";

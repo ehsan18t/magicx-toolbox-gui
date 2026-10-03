@@ -1,5 +1,5 @@
 import { tv, type VariantProps } from "$lib/utils/cn";
-import { CHIP_SOLID, CHIP_TINT, TONE_SOFT, TONE_TEXT, TONE_TINT } from "$lib/design";
+import { CHIP_QUIET_HOVER, CHIP_SOLID, CHIP_TINT, TONE_SOFT, TONE_TEXT, TONE_TINT } from "$lib/design";
 
 /** Every control dims the same when disabled: `DISABLED` through the attribute, `DIMMED` by hand. */
 export const DISABLED = "disabled:cursor-not-allowed disabled:opacity-50";
@@ -179,6 +179,9 @@ export const card = tv({
 
 export type CardVariants = VariantProps<typeof card>;
 
+/** A row of MetaItems under a title. */
+export const META_LINE = "flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs";
+
 /** A list row that is one button, e.g. a summary entry or a category link. */
 export const rowButton = tv({
   base: "cursor-pointer text-left hover:bg-muted",
@@ -214,9 +217,9 @@ export const toggleChip = tv({
     },
   },
   compoundVariants: [
-    { variant: "quiet", tone: "accent", class: "enabled:hover:border-accent/50" },
-    { variant: "quiet", tone: "warning", class: "enabled:hover:border-warning/50" },
-    { variant: "quiet", tone: "error", class: "enabled:hover:border-error/50" },
+    { variant: "quiet", tone: "accent", class: CHIP_QUIET_HOVER.accent },
+    { variant: "quiet", tone: "warning", class: CHIP_QUIET_HOVER.warning },
+    { variant: "quiet", tone: "error", class: CHIP_QUIET_HOVER.error },
     { variant: "tint", tone: "accent", class: CHIP_TINT.accent },
     { variant: "tint", tone: "warning", class: CHIP_TINT.warning },
     { variant: "tint", tone: "error", class: CHIP_TINT.error },
@@ -346,6 +349,9 @@ export type ModalSize = NonNullable<VariantProps<typeof modal>["size"]>;
 
 /** A close button pinned to a dialog's corner, over a layout with no header row. */
 export const FLOATING_CLOSE = "absolute top-3 right-3";
+
+/** Side padding of a dialog led by a large title under a floating close (About, Updates): a step past px-6. */
+export const WIDE_DIALOG_INSET = "px-7";
 
 /** The bar that marks an item: a `pill` beside the current entry, a `stripe` down a row's edge. */
 export const indicator = tv({

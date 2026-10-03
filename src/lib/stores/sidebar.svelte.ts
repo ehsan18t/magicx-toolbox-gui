@@ -1,15 +1,15 @@
 import { STORAGE_KEYS } from "$lib/config/app";
+import { remToken } from "$lib/utils/cssToken";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { innerWidth } from "svelte/reactivity/window";
-
-/** Window width at which the navigation pane docks expanded (WinUI NavigationView's threshold). */
-const EXPANDED_MIN_WIDTH = 1008;
 
 const collapsedState = new PersistentStore(STORAGE_KEYS.navCollapsed, false);
 
 let isOverlayOpen = $state(false);
 
-const canDockExpanded = $derived((innerWidth.current ?? EXPANDED_MIN_WIDTH) >= EXPANDED_MIN_WIDTH);
+const canDockExpanded = $derived(
+  innerWidth.current === undefined || innerWidth.current >= remToken("--breakpoint-nav-expanded"),
+);
 const isDockedExpanded = $derived(canDockExpanded && !collapsedState.value);
 const isOverlay = $derived(isOverlayOpen && !isDockedExpanded);
 

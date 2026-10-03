@@ -12,7 +12,7 @@
   import { nextEnabledIndex } from "./listNav";
   import Spinner from "./Spinner.svelte";
   import type { SelectOption } from "./types";
-  import { BUSY, card, DIMMED, field, indicator } from "./variants";
+  import { BUSY, card, DIMMED, DISABLED, field, indicator } from "./variants";
 
   interface Props {
     value: T | null;
@@ -150,7 +150,7 @@
       ?.scrollIntoView({ block: "nearest" });
   });
 
-  // The menu is fixed-position: a click outside, any scroll or resize behind it, or the control going inert closes it.
+  // The menu is fixed-position: a click outside, a scroll that moves the trigger, a resize, or the control going inert closes it.
   $effect(() => {
     if (!isOpen || !triggerEl) return;
     if (disabled || loading) {
@@ -162,6 +162,12 @@
       const target = e.target as Node;
       if (!triggerEl?.contains(target) && !menuEl?.contains(target)) close();
     };
+    // Compared, not closed outright: a scroll queued at open (focus scrolling the trigger into view) moved nothing since.
+    const anchor = triggerEl.getBoundingClientRect();
+    const onScroll = () => {
+      const now = triggerEl?.getBoundingClientRect();
+      if (now?.top !== anchor.top || now.left !== anchor.left) close();
+    };
     const scrollers: EventTarget[] = [window];
     for (let el = triggerEl.parentElement; el; el = el.parentElement) {
       const style = getComputedStyle(el);
@@ -170,11 +176,11 @@
 
     window.addEventListener("click", onClick);
     window.addEventListener("resize", close);
-    for (const el of scrollers) el.addEventListener("scroll", close, { passive: true });
+    for (const el of scrollers) el.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       window.removeEventListener("click", onClick);
       window.removeEventListener("resize", close);
-      for (const el of scrollers) el.removeEventListener("scroll", close);
+      for (const el of scrollers) el.removeEventListener("scroll", onScroll);
     };
   });
 </script>
@@ -199,7 +205,8 @@
         isOpen && "border-accent",
         pending && [PENDING_TINT, "text-warning"],
         loading && BUSY,
-        disabled && ["cursor-not-allowed", DIMMED],
+        // Not unconditional: loading sets the attribute too, and keeps BUSY's look.
+        disabled && DISABLED,
       ],
     })}
   >

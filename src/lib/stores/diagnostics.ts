@@ -1,5 +1,6 @@
-import { appInfoStore } from "$lib/stores/appInfo.svelte";
-import { systemStore } from "$lib/stores/system.svelte";
+import { appInfoStore } from "./appInfo.svelte";
+import { elevationStore } from "./elevation.svelte";
+import { systemStore } from "./system.svelte";
 
 export interface DiagnosticsFact {
   label: string;
@@ -9,13 +10,13 @@ export interface DiagnosticsFact {
 export const versionLabel = (): string =>
   appInfoStore.version ? `Version ${appInfoStore.version}` : "Version unknown";
 
-/** Null until loaded: system info and the engine version load asynchronously. */
+/** Null until loaded: each fact loads asynchronously. */
 function allFacts(): { label: string; value: string | null }[] {
   const info = systemStore.info;
   return [
     { label: "Windows", value: info ? `${info.windows.product_name} ${info.windows.display_version}` : null },
     { label: "Build", value: info?.windows.build_number ?? null },
-    { label: "Running as", value: info ? (info.is_admin ? "Administrator" : "Standard user") : null },
+    { label: "Running as", value: elevationStore.runningAs },
     { label: "Engine", value: appInfoStore.tauriVersion ? `Tauri ${appInfoStore.tauriVersion}` : null },
   ];
 }

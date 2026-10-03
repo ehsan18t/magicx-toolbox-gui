@@ -3,6 +3,7 @@ export { ICON_SIZE, type IconSize } from "./size";
 export { INLINE_CODE } from "./surface";
 export {
   CAPTION_BUTTON,
+  CHIP_QUIET_HOVER,
   CHIP_SOLID,
   CHIP_TINT,
   COLUMN_TINT,

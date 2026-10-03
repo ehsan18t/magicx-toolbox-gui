@@ -13,6 +13,7 @@ import { logError } from "$lib/utils/logger";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { toastStore } from "./toast.svelte";
 
 const PROFILE_FILTERS = [{ name: "MagicX Profile", extensions: [PROFILE_EXT] }];
 const DEFAULT_PROFILE_SUBDIR = "profiles";
@@ -85,6 +86,11 @@ async function importFrom(pick: () => Promise<string | null>): Promise<boolean> 
   }
 }
 
+function setProfileDir(path: string | null) {
+  profileDir.value = path;
+  void loadSavedProfiles();
+}
+
 export const profileStore = {
   get isExporting() {
     return isExporting;
@@ -132,9 +138,19 @@ export const profileStore = {
     return applyResult;
   },
 
-  setProfileDir(path: string | null) {
-    profileDir.value = path;
-    void loadSavedProfiles();
+  setProfileDir,
+
+  /** Asks for a folder to list profiles from; the chosen path, or null when cancelled or the picker failed. */
+  async chooseFolder(): Promise<string | null> {
+    try {
+      const selected = await open({ directory: true, multiple: false, title: "Select a profile folder" });
+      if (typeof selected !== "string") return null;
+      setProfileDir(selected);
+      return selected;
+    } catch (error) {
+      toastStore.failure("Failed to open the folder picker", error);
+      return null;
+    }
   },
 
   /** Asks where to save, then exports the selected tweaks. */

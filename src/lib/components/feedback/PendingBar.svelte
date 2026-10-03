@@ -1,16 +1,19 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { Badge, Button, Card, IconButton, rowButton } from "$lib/components/ui";
+  import { Badge, Button, Card, IconButton } from "$lib/components/ui";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { tweakDetailsModalStore } from "$lib/stores/detailsModal.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
+  import { reclaimFocus } from "$lib/utils/focus";
   import { plural } from "$lib/utils/format";
   import { expand, pop, shift } from "$lib/utils/motion";
   import { isHighRisk, stateSummary } from "$lib/utils/tweakPresentation";
+  import { tick } from "svelte";
   import PendingReviewModal, { type PendingItem } from "./PendingReviewModal.svelte";
 
   let expanded = $state(false);
+  let toggleEl = $state<HTMLButtonElement | null>(null);
   let applying = $state(false);
   let reviewing = $state(false);
 
@@ -40,6 +43,19 @@
     else void apply();
   }
 
+  // The pressed control goes out with its row or the whole bar; the Apply path is the overlay's to restore.
+  async function unstage(tweakId: string) {
+    pendingChangesStore.remove(tweakId);
+    await tick();
+    reclaimFocus(count > 0 ? toggleEl : null);
+  }
+
+  async function discard() {
+    pendingChangesStore.clear();
+    await tick();
+    reclaimFocus();
+  }
+
   async function apply() {
     reviewing = false;
     applying = true;
@@ -62,7 +78,7 @@
       {#if expanded}
         <ul class="m-0 max-h-56 list-none overflow-y-auto border-b border-border p-1" transition:expand>
           {#each items as { change, name, fromArrow } (change.tweakId)}
-            <li class={rowButton({ radius: "sm", class: "flex items-center gap-2 px-2 py-1.5" })} transition:expand>
+            <li class="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted" transition:expand>
               <button
                 type="button"
                 class="min-w-0 flex-1 cursor-pointer truncate text-left text-ui"
@@ -71,12 +87,7 @@
                 <span class="text-foreground">{name}</span>
                 <span class="text-foreground-muted"> {fromArrow}{change.optionLabel}</span>
               </button>
-              <IconButton
-                icon="mdi:close"
-                size="xs"
-                label="Unstage {name}"
-                onclick={() => pendingChangesStore.remove(change.tweakId)}
-              />
+              <IconButton icon="mdi:close" size="xs" label="Unstage {name}" onclick={() => unstage(change.tweakId)} />
             </li>
           {/each}
         </ul>
@@ -84,6 +95,7 @@
 
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
         <button
+          bind:this={toggleEl}
           type="button"
           class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
           aria-expanded={expanded}
@@ -108,7 +120,7 @@
         </button>
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
-          <Button disabled={busy} onclick={() => pendingChangesStore.clear()}>Discard</Button>
+          <Button disabled={busy} onclick={discard}>Discard</Button>
           <Button variant="primary" loading={applying} disabled={busy} onclick={requestApply}>Apply</Button>
         </div>
       </div>

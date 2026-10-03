@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LinkButton } from "$lib/components/ui";
+  import { LinkButton, MetaItem } from "$lib/components/ui";
   import { tweakDetailsModalStore } from "$lib/stores/detailsModal.svelte";
   import type { SearchResult } from "$lib/stores/search.svelte";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
@@ -12,7 +12,6 @@
   import AttentionNotice from "./AttentionNotice.svelte";
   import FavoriteButton from "./FavoriteButton.svelte";
   import ItemRow, { type RowStripe } from "./ItemRow.svelte";
-  import MetaItem from "./MetaItem.svelte";
   import RestoreButton from "./RestoreButton.svelte";
   import RowAction from "./RowAction.svelte";
   import TweakControl from "./TweakControl.svelte";

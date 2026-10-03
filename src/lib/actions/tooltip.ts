@@ -42,10 +42,11 @@ export function tooltip(node: HTMLElement, text: TooltipText) {
     document.removeEventListener("keydown", hideOnEscape, true);
   }
 
-  // Capture phase: the first Escape dismisses the tooltip, not the dialog under it.
+  // Capture phase, stopped: the first Escape dismisses the tooltip, not the dialog or field under it.
   function hideOnEscape(e: KeyboardEvent) {
     if (e.key !== "Escape" || !tip) return;
     e.preventDefault();
+    e.stopPropagation();
     hide();
   }
 
@@ -77,7 +78,7 @@ export function tooltip(node: HTMLElement, text: TooltipText) {
     tip.setAttribute("role", "tooltip");
     tip.textContent = content;
     tip.className =
-      "fixed z-popover px-2.5 py-1.5 text-xs font-medium text-foreground bg-elevated rounded-md shadow-lg border border-border pointer-events-none animate-pop-in";
+      "fixed z-popover px-2.5 py-1.5 text-xs font-medium text-foreground bg-elevated rounded-md shadow-flyout border border-border pointer-events-none animate-pop-in";
     document.body.appendChild(tip);
     position();
     // Describes only when it adds to the name; a tooltip that repeats the label stays out of the way.

@@ -19,8 +19,9 @@
   import { tweakDetailsModalStore } from "$lib/stores/detailsModal.svelte";
   import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
+  import { capitalize } from "$lib/utils/format";
   import { expand, reducedMotion } from "$lib/utils/motion";
-  import { attentionCause, rowDomId, tallies } from "$lib/utils/tweakPresentation";
+  import { attentionCause, ELEVATE_REMEDY, rowDomId, tallies } from "$lib/utils/tweakPresentation";
   import AppliedMeter from "./AppliedMeter.svelte";
 
   interface Props {
@@ -128,7 +129,7 @@
       (t) => `→ ${pendingChangesStore.change(t.definition.id)?.optionLabel ?? ""}`,
     )}
     {@render group("mdi:help-circle-outline", "warning", "State unknown", unknown, (t) =>
-      t.status.needsElevation ? "Restart as administrator to read it" : "",
+      t.status.needsElevation ? capitalize(ELEVATE_REMEDY) : "",
     )}
     {@render group("mdi:restart", "info", "Waiting for a restart", reboot, () => "")}
 

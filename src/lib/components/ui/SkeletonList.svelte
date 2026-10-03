@@ -3,8 +3,8 @@
 </script>
 
 <script lang="ts">
-  import { SKELETON_SOFT } from "$lib/design";
   import { cn } from "$lib/utils/cn";
+  import Skeleton from "./Skeleton.svelte";
   import { card } from "./variants";
 
   let { class: className }: { class?: string } = $props();
@@ -16,14 +16,14 @@
       <div class="flex flex-1 flex-col gap-3 p-4">
         <div class="flex items-start justify-between">
           <div class="flex flex-col gap-2">
-            <div class="h-5 w-40 rounded bg-muted"></div>
-            <div class="h-4 w-56 rounded {SKELETON_SOFT}"></div>
+            <Skeleton pulse={false} class="h-5 w-40" />
+            <Skeleton soft pulse={false} class="h-4 w-56" />
           </div>
-          <div class="h-9 w-12 rounded-lg bg-muted"></div>
+          <Skeleton pulse={false} class="h-9 w-12 rounded-lg" />
         </div>
         <div class="flex items-center gap-2">
-          <div class="h-5 w-16 rounded-full {SKELETON_SOFT}"></div>
-          <div class="h-5 w-20 rounded-full {SKELETON_SOFT}"></div>
+          <Skeleton soft pulse={false} class="h-5 w-16 rounded-full" />
+          <Skeleton soft pulse={false} class="h-5 w-20 rounded-full" />
         </div>
       </div>
     </div>

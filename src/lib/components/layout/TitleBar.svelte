@@ -6,14 +6,13 @@
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { LOGS_PANEL_ID, LOGS_TOGGLE_ID, logsStore } from "$lib/stores/logs.svelte";
   import { sidebarStore } from "$lib/stores/sidebar.svelte";
-  import { systemStore } from "$lib/stores/system.svelte";
   import ThemeToggle from "./ThemeToggle.svelte";
   import TitleBarSearch from "./TitleBarSearch.svelte";
   import WindowControls from "./WindowControls.svelte";
 
   let iconFailed = $state(false);
 
-  const isAdmin = $derived(systemStore.info?.is_admin ?? null);
+  const isAdmin = $derived(elevationStore.isAdmin);
   const navLabel = $derived(sidebarStore.isOpen ? "Collapse navigation" : "Expand navigation");
 </script>
 

@@ -19,7 +19,8 @@
   <div class="mx-auto flex max-w-page flex-col gap-4 px-4 pt-5 pb-dock-clearance sm:px-6">
     <header class="flex flex-col gap-3">
       <div class="min-w-0">
-        <h1 class={["m-0 wrap-break-word", HEADING.page]}>{title}</h1>
+        <!-- Focusable for utils/focus: where focus lands when the control holding it goes away. -->
+        <h1 tabindex="-1" class={["m-0 wrap-break-word", HEADING.page]}>{title}</h1>
         {#if description}
           <p class="m-0 mt-1 text-ui wrap-break-word text-foreground-muted" aria-live={announce ? "polite" : undefined}>
             {description}

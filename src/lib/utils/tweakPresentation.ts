@@ -10,7 +10,7 @@ import type {
   TweakStatus,
   TweakWithStatus,
 } from "$lib/types";
-import { plural } from "$lib/utils/format";
+import { capitalize, plural } from "$lib/utils/format";
 
 export const SYSTEM_DEFAULT_LABEL = "System default";
 
@@ -26,7 +26,9 @@ export interface MetaFact {
 export const CHECKING: MetaFact = { label: "Checking…", icon: "mdi:loading", tone: "neutral", spin: true };
 export const UNKNOWN_ICON = "mdi:help-circle-outline";
 export const UNKNOWN_NEEDS_ADMIN = "Unknown, needs admin";
-export const ELEVATE_HINT = "Restart as administrator to resolve.";
+/** The remedy when only elevation can read or change something, as a clause; ELEVATE_HINT is the sentence. */
+export const ELEVATE_REMEDY = "restart as administrator to resolve";
+export const ELEVATE_HINT = `${capitalize(ELEVATE_REMEDY)}.`;
 
 const RISK_LEVEL: Record<BackendRiskLevel, RiskLevel> = {
   Low: "low",

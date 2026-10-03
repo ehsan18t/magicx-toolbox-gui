@@ -1,8 +1,3 @@
-<script lang="ts" module>
-  // Lets the installer start before the app exits.
-  const EXIT_AFTER_INSTALL_MS = 1000;
-</script>
-
 <script lang="ts">
   import { Icon, MarkdownText } from "$lib/components/shared";
   import {
@@ -17,17 +12,16 @@
     ModalHeader,
     SettingRow,
     Switch,
+    WIDE_DIALOG_INSET,
   } from "$lib/components/ui";
   import { HEADING } from "$lib/design";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { settingsStore } from "$lib/stores/settings.svelte";
-  import { toastStore } from "$lib/stores/toast.svelte";
-  import { updateStore } from "$lib/stores/update.svelte";
-  import { versionLabel } from "$lib/utils/diagnostics";
+  import { UPDATE_CHECK_CADENCE, updateStore } from "$lib/stores/update.svelte";
+  import { versionLabel } from "$lib/stores/diagnostics";
   import { formatBytes } from "$lib/utils/format";
   import { formatDate } from "$lib/utils/time";
-  import { exit } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
 
   const isOpen = $derived(modalStore.current === "update");
@@ -49,22 +43,6 @@
     if (updateInfo || isChecking) checkForUpdate();
   }
 
-  async function installUpdate() {
-    if (isInstalling || !updateInfo?.available) return;
-    if (!(await updateStore.installUpdate())) return;
-    setTimeout(async () => {
-      try {
-        await exit(0);
-      } catch {
-        // The installer is already running, and the backend keeps refusing applies until exit.
-        modalStore.close();
-        toastStore.warning(
-          "The installer is running, but the app could not close itself. Close the app to finish the update.",
-        );
-      }
-    }, EXIT_AFTER_INSTALL_MS);
-  }
-
   const lastChecked = $derived.by(() => {
     const at = formatDate(settingsStore.lastUpdateCheck, { month: "long", time: "minutes" });
     return at ? `Last checked ${at}` : "Not checked yet";
@@ -80,9 +58,9 @@
 </script>
 
 <Modal open={isOpen} onclose={modalStore.close} size="md">
-  <ModalHeader title="Updates" size="xl" floating class="px-7 pt-6 pb-0" onclose={modalStore.close} />
+  <ModalHeader title="Updates" size="xl" floating class="{WIDE_DIALOG_INSET} pt-6 pb-0" onclose={modalStore.close} />
 
-  <ModalBody class="px-7">
+  <ModalBody class={WIDE_DIALOG_INSET}>
     <p class="sr-only" aria-live="polite">{status}</p>
     <div>
       {#if updateInfo?.available}
@@ -108,7 +86,12 @@
 
         <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
           {#if updateInfo.downloadUrl && updateInfo.assetName}
-            <Button variant="primary" icon="mdi:download" loading={isInstalling} onclick={installUpdate}>
+            <Button
+              variant="primary"
+              icon="mdi:download"
+              loading={isInstalling}
+              onclick={() => updateStore.installAndExit()}
+            >
               {isInstalling ? "Downloading…" : "Install update"}
             </Button>
           {:else}
@@ -155,7 +138,7 @@
     <section class="mt-6 divide-y divide-border border-t border-border" aria-label="Update settings">
       <SettingRow
         title="Check for updates at startup"
-        description="At most once an hour, in the background."
+        description="At most {UPDATE_CHECK_CADENCE}, in the background."
         density="flush"
       >
         <Switch

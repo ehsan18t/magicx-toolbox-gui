@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import { overflowHints } from "$lib/actions/overflowHints";
-  import { card, IconButton, indicator as indicatorBar } from "$lib/components/ui";
+  import { card, IconButton, indicator as indicatorBar, Skeleton } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { navigationStore, type TabDefinition, type TabId } from "$lib/stores/navigation.svelte";
   import { sidebarStore } from "$lib/stores/sidebar.svelte";
@@ -151,8 +151,8 @@
         {#if tweaksStore.isLoading}
           {#each { length: SKELETON_ROWS }, i (i)}
             <div class="flex h-9 shrink-0 items-center gap-3 px-3">
-              <div class="h-5 w-5 shrink-0 animate-pulse rounded bg-muted"></div>
-              {#if isOpen}<div class="h-3.5 flex-1 animate-pulse rounded bg-muted"></div>{/if}
+              <Skeleton class="h-5 w-5 shrink-0" />
+              {#if isOpen}<Skeleton class="h-3.5 flex-1" />{/if}
             </div>
           {/each}
         {/if}

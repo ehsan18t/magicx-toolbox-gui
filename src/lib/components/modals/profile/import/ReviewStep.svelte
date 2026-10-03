@@ -1,12 +1,13 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import { MetaItem } from "$lib/components/items";
   import {
     Badge,
     Button,
     Card,
     EmptyState,
     IconTile,
+    META_LINE,
+    MetaItem,
     ModalBody,
     ModalFooter,
     SectionCard,
@@ -58,7 +59,7 @@
     <div class="min-w-0 flex-1">
       <h3 class={["m-0 truncate", HEADING.section]}>{meta.name}</h3>
       {#if meta.description}<p class="m-0 mt-1 text-sm text-foreground-muted">{meta.description}</p>{/if}
-      <p class="m-0 mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-foreground-muted">
+      <p class={["m-0 mt-2 text-foreground-muted", META_LINE]}>
         <MetaItem size="md" icon="mdi:calendar" label={formatDate(meta.created_at, { month: "short" })} />
         <MetaItem size="md" icon="mdi:microsoft-windows" label="Windows {meta.source_windows_version}" />
         <MetaItem size="md" icon="mdi:tune-variant" label={plural(validation.stats.total_tweaks, "tweak")} />

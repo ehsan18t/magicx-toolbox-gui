@@ -1,6 +1,7 @@
 import * as logsApi from "$lib/api/logs";
 import type { LogLine, LogSettings, LogTail } from "$lib/types";
 import { errorMessage } from "$lib/utils/error";
+import { logError } from "$lib/utils/logger";
 import { TOAST_DURATION, toastStore } from "./toast.svelte";
 
 export const LOGS_PANEL_ID = "logs-panel";
@@ -64,6 +65,12 @@ function append(requested: number, tail: LogTail) {
   since = tail.lines[tail.lines.length - 1].seq;
 }
 
+/** Like toastStore.failure, but the toast names the action: the bare error does not say which panel action failed. */
+function fail(action: string, error: unknown) {
+  logError(action, error);
+  toastStore.error(`${action}: ${errorMessage(error)}`);
+}
+
 async function poll(gen: number) {
   try {
     const requested = since;
@@ -78,7 +85,7 @@ async function loadSettings() {
   try {
     settings = await logsApi.getLogSettings();
   } catch (error) {
-    toastStore.error(`Could not read the log settings: ${errorMessage(error)}`);
+    fail("Could not read the log settings", error);
   }
 }
 
@@ -132,7 +139,7 @@ export const logsStore = {
     try {
       settings = await logsApi.setLogSettings(persist, detailed);
     } catch (error) {
-      toastStore.error(`Could not change the log settings: ${errorMessage(error)}`);
+      fail("Could not change the log settings", error);
       await loadSettings();
     } finally {
       isSettingsBusy = false;
@@ -146,7 +153,7 @@ export const logsStore = {
       settings = await logsApi.deleteLogs();
       toastStore.success("Logs deleted");
     } catch (error) {
-      toastStore.error(`Some log files could not be deleted: ${errorMessage(error)}`);
+      fail("Some log files could not be deleted", error);
       await loadSettings();
     } finally {
       isSettingsBusy = false;
@@ -163,11 +170,12 @@ export const logsStore = {
         duration: TOAST_DURATION.long,
         action: {
           label: "Show in folder",
-          run: () => void logsApi.revealLastExport().catch((error) => toastStore.error(errorMessage(error))),
+          run: () =>
+            void logsApi.revealLastExport().catch((error) => toastStore.failure("Could not show the export", error)),
         },
       });
     } catch (error) {
-      toastStore.error(`Could not export diagnostics: ${errorMessage(error)}`);
+      fail("Could not export diagnostics", error);
     } finally {
       isExporting = false;
     }
@@ -177,7 +185,7 @@ export const logsStore = {
     try {
       await logsApi.openLogFolder();
     } catch (error) {
-      toastStore.error(`Could not open the logs folder: ${errorMessage(error)}`);
+      fail("Could not open the logs folder", error);
     }
   },
 };

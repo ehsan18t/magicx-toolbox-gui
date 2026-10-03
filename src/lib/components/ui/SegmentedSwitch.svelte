@@ -8,7 +8,7 @@
   import { cn } from "$lib/utils/cn";
   import { glide } from "$lib/utils/motion";
   import { PENDING_TINT } from "$lib/design";
-  import { nextEnabledIndex } from "./listNav";
+  import { nextEnabledIndex, radioKeyIndex } from "./listNav";
   import Spinner from "./Spinner.svelte";
   import type { SegmentOption } from "./types";
   import { DIMMED } from "./variants";
@@ -66,13 +66,8 @@
     const focused = segments.indexOf(document.activeElement as HTMLElement);
     const from = focused >= 0 ? focused : selectedIndex;
 
-    let next: number;
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = nextEnabledIndex(options, from, 1);
-    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = nextEnabledIndex(options, from, -1);
-    else if (e.key === "Home") next = nextEnabledIndex(options, -1, 1);
-    else if (e.key === "End") next = nextEnabledIndex(options, options.length, -1);
-    else return;
-
+    const next = radioKeyIndex(options, from, e.key);
+    if (next === null) return;
     e.preventDefault();
     if (next < 0) return;
     segments[next].focus();

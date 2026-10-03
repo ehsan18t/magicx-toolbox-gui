@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { IconButton, ModalTitle } from "$lib/components/ui";
+  import { IconButton, META_LINE, MetaItem, ModalTitle } from "$lib/components/ui";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { type MetaFact, pendingFact, tweakMeta } from "$lib/utils/tweakPresentation";
   import FavoriteButton from "../FavoriteButton.svelte";
-  import MetaItem from "../MetaItem.svelte";
   import RestoreButton from "../RestoreButton.svelte";
   import TweakControl from "../TweakControl.svelte";
 
@@ -39,7 +38,7 @@
   </div>
 
   <div class="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-    <div class="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs">
+    <div class={META_LINE}>
       {@render fact(facts.state)}
       {#if pendingChange}{@render fact(pendingFact(pendingChange.optionLabel))}{/if}
       {@render fact(facts.risk)}

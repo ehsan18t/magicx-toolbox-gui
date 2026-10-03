@@ -8,10 +8,20 @@ let level = $state<Level | null>(null);
 // A second call while the UAC prompt is up would raise a second prompt.
 let isRestarting = $state(false);
 
-/** The app's elevation ceiling (spec §9); the per-tweak `availability` carries the SID guard's reason. */
+/** The app's elevation ceiling (ADR-0005); the per-tweak `availability` carries the SID guard's reason. */
 export const elevationStore = {
   get level(): Level {
     return level ?? "User";
+  },
+
+  /** Null until loaded. */
+  get isAdmin(): boolean | null {
+    return level === null ? null : level !== "User";
+  },
+
+  /** Null until loaded. */
+  get runningAs(): string | null {
+    return level === null ? null : level === "User" ? "Standard user" : "Administrator";
   },
 
   get isRestarting() {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { MarkdownText } from "$lib/components/shared";
-  import { Modal, ModalBody, PanelHeading } from "$lib/components/ui";
+  import { Modal, ModalBody, PanelSection } from "$lib/components/ui";
   import { tweakDetailsModalStore } from "$lib/stores/detailsModal.svelte";
   import { createSnapshotHistory } from "$lib/stores/snapshotHistory.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
@@ -10,7 +10,6 @@
   import SnapshotHistory from "./SnapshotHistory.svelte";
   import StatusCallouts from "./StatusCallouts.svelte";
 
-  const aboutId = $props.id();
   const open = $derived(tweakDetailsModalStore.openId !== null);
   const tweak = $derived.by(() => {
     const id = tweakDetailsModalStore.shownId;
@@ -36,10 +35,9 @@
       <div class="@container">
         <div class="grid items-start gap-5 @3xl:grid-cols-main-aside">
           {#if def.info}
-            <section aria-labelledby={aboutId} class={history.visible ? "" : "@3xl:col-span-2"}>
-              <PanelHeading id={aboutId} icon="mdi:information-outline" class="mb-2.5">About</PanelHeading>
+            <PanelSection title="About" icon="mdi:information-outline" class={history.visible ? "" : "@3xl:col-span-2"}>
               <MarkdownText content={def.info} />
-            </section>
+            </PanelSection>
           {/if}
           {#if history.visible}
             <SnapshotHistory {history} class={def.info ? "" : "@3xl:col-span-2"} />

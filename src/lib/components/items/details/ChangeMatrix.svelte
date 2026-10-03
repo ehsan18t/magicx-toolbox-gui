@@ -2,7 +2,7 @@
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
   import { COLUMN_TINT, TABLE_HEAD } from "$lib/design";
-  import { PanelHeading } from "$lib/components/ui";
+  import { PanelSection } from "$lib/components/ui";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { buildMatrix, KIND_META, type MatrixCell, optionsMatchingNow, optionTone } from "$lib/utils/changeMatrix";
@@ -17,7 +17,6 @@
 
   let { tweak, scripted }: Props = $props();
 
-  const headingId = $props.id();
   const def = $derived(tweak.definition);
   const status = $derived(tweak.status);
   const pendingLabel = $derived(pendingChangesStore.change(def.id)?.optionLabel);
@@ -39,8 +38,7 @@
   {/if}
 {/snippet}
 
-<section aria-labelledby={headingId}>
-  <PanelHeading id={headingId} icon="mdi:tune-variant" class="mb-2.5">What each option sets</PanelHeading>
+<PanelSection title="What each option sets" icon="mdi:tune-variant">
   {#if matrix.length === 0}
     <p class="m-0 text-ui text-foreground-muted">
       {scripted ? "This tweak works through the scripts below." : "No system settings are listed."}
@@ -134,4 +132,4 @@
       </table>
     </div>
   {/if}
-</section>
+</PanelSection>

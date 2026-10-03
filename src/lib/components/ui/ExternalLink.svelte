@@ -16,7 +16,7 @@
   let { href, tooltip, variant, tone, class: className, children, ...rest }: Props = $props();
 </script>
 
-<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- an external URL, which resolve() (app routes) does not apply to -->
 <a
   {href}
   class={variant ? link({ variant, tone, class: className }) : className}

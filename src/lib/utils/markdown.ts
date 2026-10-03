@@ -1,4 +1,4 @@
-import { INLINE_CODE, PROSE_LINK_UNDERLINE } from "$lib/design";
+import { HEADING, INLINE_CODE, PROSE_LINK_UNDERLINE } from "$lib/design";
 type ListType = "ul" | "ol";
 
 const LIST_OPEN: Record<ListType, string> = {
@@ -59,7 +59,7 @@ export function markdownToHtml(text: string): string {
   };
   const heading = (tag: "h3" | "h4", content: string) => {
     closeList();
-    out.push(`<${tag} class="mt-3 mb-1.5 text-sm font-semibold text-foreground">${inline(content)}</${tag}>`);
+    out.push(`<${tag} class="mt-3 mb-1.5 ${HEADING.item} text-foreground">${inline(content)}</${tag}>`);
   };
 
   for (const line of text ? escapeHtml(text).split("\n") : []) {

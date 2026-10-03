@@ -1,11 +1,9 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
   import { SearchInput, ToggleChip } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
   import { tick } from "svelte";
-  import { fromAction } from "svelte/attachments";
 
   let searchEl = $state<HTMLInputElement | null>(null);
 
@@ -40,9 +38,7 @@
     class="max-w-9/20 shrink-0 animate-pop-in"
     aria-pressed={scoped}
     aria-label="Search only in {scopeName}"
-    {@attach fromAction(tooltip, () =>
-      scoped ? `Searching only in ${scopeName}. Select to search everywhere.` : `Search only in ${scopeName}`,
-    )}
+    tooltip={scoped ? `Searching only in ${scopeName}. Select to search everywhere.` : `Search only in ${scopeName}`}
     onclick={toggleScope}
   >
     <span class="truncate">{scopeName}</span>

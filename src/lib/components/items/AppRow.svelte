@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ActivityBar, Button } from "$lib/components/ui";
+  import { ActivityBar, Button, MetaItem } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { appDetailsModalStore } from "$lib/stores/detailsModal.svelte";
@@ -18,7 +18,6 @@
   import { permissionFact, riskFact, rowDomId, toRiskLevel } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
   import ItemRow from "./ItemRow.svelte";
-  import MetaItem from "./MetaItem.svelte";
   import RowAction from "./RowAction.svelte";
   import WarningNotice from "./WarningNotice.svelte";
   import WarningToggle from "./WarningToggle.svelte";
