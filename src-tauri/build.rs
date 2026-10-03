@@ -124,8 +124,8 @@ pub static APPS: LazyLock<Vec<AppDef>> = LazyLock::new(|| {
 "#;
     std::fs::write(out_path.join("generated_corpus.rs"), generated_code)?;
 
-    println!(
-        "cargo:warning=✓ Validated and compiled {} categor{}, {} tweak{}, {} shared setting{}, {} app{} from tweaks/",
+    console_info(&format!(
+        "✓ Validated and compiled {} categor{}, {} tweak{}, {} shared setting{}, {} app{} from tweaks/",
         corpus.categories.len(),
         if corpus.categories.len() == 1 { "y" } else { "ies" },
         corpus.tweaks.len(),
@@ -134,9 +134,23 @@ pub static APPS: LazyLock<Vec<AppDef>> = LazyLock::new(|| {
         if corpus.shared.len() == 1 { "" } else { "s" },
         apps.len(),
         if apps.len() == 1 { "" } else { "s" },
-    );
+    ));
 
     Ok(())
+}
+
+// Cargo has no info level and hides build-script output, so this writes to the console itself.
+// No console (CI, an IDE's build) means no line; a failed validation still fails loudly.
+fn console_info(message: &str) {
+    use std::io::Write;
+    if let Ok(mut console) = std::fs::OpenOptions::new().write(true).open("CONOUT$") {
+        let _ = writeln!(
+            console,
+            "\r\x1b[2K\x1b[1;36minfo\x1b[0m\x1b[1m:\x1b[0m {}@{}: {message}",
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION"),
+        );
+    }
 }
 
 /// Every problem in one framed report, so an author sees them all in one run.
