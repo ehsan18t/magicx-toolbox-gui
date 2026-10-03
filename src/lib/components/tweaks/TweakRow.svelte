@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tooltip } from "$lib/actions/tooltip";
   import { Icon } from "$lib/components/shared";
-  import { HighlightedText } from "$lib/components/ui";
+  import { HighlightedText, TONE_TEXT } from "$lib/components/ui";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
@@ -17,7 +17,6 @@
     RISK_INFO,
     RISK_TONE,
     stateSummary,
-    TONE_TEXT,
     usesDropdown,
   } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";

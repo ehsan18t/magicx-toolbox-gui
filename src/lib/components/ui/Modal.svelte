@@ -1,21 +1,32 @@
 <script lang="ts" module>
   // Only the topmost modal handles keys and focus: stacked focus traps pull focus back and forth forever.
   const openStack: object[] = [];
+
+  const FOCUSABLE = [
+    "a[href]",
+    "summary",
+    "button:not([disabled])",
+    "input:not([disabled])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    "[tabindex]:not([tabindex='-1'])",
+  ].join(",");
 </script>
 
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { tick } from "svelte";
-
-  type Size = "sm" | "md" | "lg" | "xl" | "full";
+  import { onDestroy, tick } from "svelte";
+  import { setModalTitleId } from "./modalContext";
+  import { modal, type ModalSize } from "./variants";
 
   interface Props {
     open: boolean;
     onclose?: () => void;
-    size?: Size;
+    size?: ModalSize;
     closeOnBackdrop?: boolean;
     closeOnEscape?: boolean;
     role?: "dialog" | "alertdialog";
+    /** Only without a ModalHeader, which names the dialog by its title. */
     labelledBy?: string;
     describedBy?: string;
     children: Snippet;
@@ -33,13 +44,8 @@
     children,
   }: Props = $props();
 
-  const SIZE_CLASS: Record<Size, string> = {
-    sm: "max-w-dialog-sm",
-    md: "max-w-dialog-md",
-    lg: "max-w-dialog-lg",
-    xl: "max-w-dialog-xl",
-    full: "h-full max-w-dialog-full",
-  };
+  const titleId = $props.id();
+  setModalTitleId(titleId);
 
   // Mounted while open or playing the exit animation.
   let isVisible = $state(false);
@@ -47,6 +53,8 @@
 
   let modalEl = $state<HTMLElement | null>(null);
   let previouslyFocusedEl: HTMLElement | null = null;
+  // A drag that starts inside (selecting text) and ends on the scrim is not a backdrop click.
+  let pressedScrim = false;
 
   const stackToken = {};
   const isTopmost = () => openStack.at(-1) === stackToken;
@@ -58,17 +66,7 @@
   });
 
   function getFocusableElements(root: HTMLElement): HTMLElement[] {
-    const selector = [
-      "a[href]",
-      "summary",
-      "button:not([disabled])",
-      "input:not([disabled])",
-      "select:not([disabled])",
-      "textarea:not([disabled])",
-      "[tabindex]:not([tabindex='-1'])",
-    ].join(",");
-
-    return Array.from(root.querySelectorAll<HTMLElement>(selector)).filter((el) => {
+    return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => {
       if (el.hasAttribute("disabled")) return false;
       if (el.getAttribute("aria-disabled") === "true") return false;
       if (el.closest("[inert]")) return false;
@@ -98,22 +96,29 @@
     void focusInitialElement();
   });
 
-  $effect(() => {
-    if (isVisible) return;
+  function restoreFocus() {
     if (!previouslyFocusedEl) return;
     try {
       // The opener can be gone (a discarded entry): fall back to the dialog still open beneath.
-      const fallback = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')].at(-1);
+      const fallback = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')]
+        .filter((el) => el !== modalEl)
+        .at(-1);
       (previouslyFocusedEl.isConnected ? previouslyFocusedEl : fallback)?.focus();
     } finally {
       previouslyFocusedEl = null;
     }
+  }
+
+  $effect(() => {
+    if (!isVisible) restoreFocus();
   });
 
+  // Unmounted while open, e.g. its host went away.
+  onDestroy(restoreFocus);
+
   function handleBackdropClick(e: MouseEvent) {
-    if (closeOnBackdrop && e.target === e.currentTarget && onclose) {
-      onclose();
-    }
+    if (pressedScrim && e.target === e.currentTarget && closeOnBackdrop) onclose?.();
+    pressedScrim = false;
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -185,21 +190,20 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if isVisible}
+  {@const styles = modal({ size, closing: isClosing })}
   <div
-    class="fixed inset-0 z-modal flex items-center justify-center bg-black/40
-      p-4 backdrop-blur-xs {isClosing ? 'animate-fade-out' : 'animate-fade-in'}"
+    class={styles.scrim()}
     role="presentation"
+    onpointerdown={(e) => (pressedScrim = e.target === e.currentTarget)}
     onclick={handleBackdropClick}
   >
     <div
-      class="flex max-h-full w-full flex-col overflow-hidden rounded-lg border border-border bg-elevated shadow-dialog {SIZE_CLASS[
-        size
-      ]} {isClosing ? 'animate-modal-out' : 'animate-modal-in'}"
+      class={styles.panel()}
       bind:this={modalEl}
       {role}
       tabindex="-1"
       aria-modal="true"
-      aria-labelledby={labelledBy}
+      aria-labelledby={labelledBy ?? titleId}
       aria-describedby={describedBy}
       onanimationend={handleAnimationEnd}
     >

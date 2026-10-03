@@ -35,18 +35,16 @@
   };
 
   const config = $derived(variantConfig[variant]);
+  const messageId = $props.id();
 </script>
 
-<Modal {open} onclose={oncancel} size="sm" role="alertdialog" labelledBy="confirm-dialog-title">
-  <ModalHeader>
-    <div class="flex items-center gap-3">
-      <Icon icon={config.icon} width="24" class="shrink-0 {config.iconColor}" />
-      <h2 id="confirm-dialog-title" class="m-0 text-base font-semibold text-foreground">{title}</h2>
-    </div>
+<Modal {open} onclose={oncancel} size="sm" role="alertdialog" describedBy={messageId}>
+  <ModalHeader {title}>
+    {#snippet leading()}<Icon icon={config.icon} width={24} class="shrink-0 {config.iconColor}" />{/snippet}
   </ModalHeader>
 
   <ModalBody>
-    <p class="m-0 text-sm leading-relaxed text-foreground-muted">{message}</p>
+    <p id={messageId} class="m-0 text-sm leading-relaxed text-foreground-muted">{message}</p>
   </ModalBody>
 
   <ModalFooter>

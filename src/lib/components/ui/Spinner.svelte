@@ -1,18 +1,28 @@
 <script lang="ts" module>
-  const ICON_SIZE = { sm: 16, md: 24 } as const;
+  import { ICON_SIZE } from "./icon";
+
+  const GLYPH = { sm: ICON_SIZE.md, md: ICON_SIZE.xl, lg: ICON_SIZE["3xl"] } as const;
 </script>
 
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
+  import { cn } from "$lib/utils/cn";
 
   interface Props {
-    size?: keyof typeof ICON_SIZE;
+    size?: keyof typeof GLYPH;
+    /** Announces the spinner as a status; without it the spinner is decorative. */
     label?: string;
+    class?: string;
   }
 
-  let { size = "md", label = "Loading" }: Props = $props();
+  let { size = "md", label, class: className }: Props = $props();
 </script>
 
-<span role="status" aria-label={label} class="inline-flex">
-  <Icon icon="mdi:loading" width={ICON_SIZE[size]} class="animate-spin text-accent" />
+<span
+  role={label ? "status" : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : "true"}
+  class={cn("inline-flex text-accent", className)}
+>
+  <Icon icon="mdi:loading" width={GLYPH[size]} class="animate-spin" />
 </span>

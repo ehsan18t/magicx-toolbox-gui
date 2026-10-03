@@ -2,7 +2,7 @@
   import { tooltip } from "$lib/actions/tooltip";
   import * as tweaksApi from "$lib/api/tweaks";
   import { Icon, MarkdownText } from "$lib/components/shared";
-  import { Modal, ModalBody } from "$lib/components/ui";
+  import { Modal, ModalBody, TONE_TEXT } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
@@ -24,7 +24,6 @@
     RISK_INFO,
     RISK_TONE,
     stateSummary,
-    TONE_TEXT,
   } from "$lib/utils/tweakPresentation";
   import TweakControl from "./TweakControl.svelte";
 

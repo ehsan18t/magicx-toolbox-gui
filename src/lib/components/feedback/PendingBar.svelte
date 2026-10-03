@@ -130,19 +130,12 @@
   </div>
 {/if}
 
-<Modal open={reviewOpen} onclose={() => (reviewing = false)} size="lg" labelledBy="apply-review-title">
-  <ModalHeader>
-    <div class="flex items-center gap-3">
-      <Icon icon="mdi:alert" width="22" class="shrink-0 text-warning" />
-      <div>
-        <h2 id="apply-review-title" class="m-0 text-base font-semibold text-foreground">
-          Review {count === 1 ? "1 change" : `${count} changes`}
-        </h2>
-        <p class="m-0 mt-0.5 text-ui text-foreground-muted">
-          {highRiskCount === 1 ? "1 change is" : `${highRiskCount} changes are`} high risk. Check them before applying.
-        </p>
-      </div>
-    </div>
+<Modal open={reviewOpen} onclose={() => (reviewing = false)} size="lg">
+  <ModalHeader title={count === 1 ? "Review 1 change" : `Review ${count} changes`}>
+    {#snippet leading()}<Icon icon="mdi:alert" width={22} class="shrink-0 text-warning" />{/snippet}
+    <p class="m-0 mt-0.5 text-ui text-foreground-muted">
+      {highRiskCount === 1 ? "1 change is" : `${highRiskCount} changes are`} high risk. Check them before applying.
+    </p>
   </ModalHeader>
   <ModalBody>
     <ul class="m-0 list-none space-y-1.5 p-0">

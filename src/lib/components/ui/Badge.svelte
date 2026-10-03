@@ -7,7 +7,7 @@
     children: Snippet;
   }
 
-  const { tone, size, class: className, children }: Props = $props();
+  let { tone, size, class: className, children }: Props = $props();
 </script>
 
 <span class={badge({ tone, size, class: className })}>

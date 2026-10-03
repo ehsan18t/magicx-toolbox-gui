@@ -8,7 +8,8 @@
   import type { AppView } from "$lib/types";
   import { APP_OPERATION_LABEL } from "$lib/utils/appPresentation";
   import { expand } from "$lib/utils/motion";
-  import { permissionInfoFor, RISK_INFO, RISK_TONE, TONE_TEXT, toRiskLevel } from "$lib/utils/tweakPresentation";
+  import { TONE_TEXT } from "$lib/components/ui";
+  import { permissionInfoFor, RISK_INFO, RISK_TONE, toRiskLevel } from "$lib/utils/tweakPresentation";
   import type { Snippet } from "svelte";
   import { searchHighlight } from "./searchHighlight.svelte";
 
@@ -290,14 +291,9 @@
   </div>
 </article>
 
-<Modal open={showDetails} onclose={() => (showDetails = false)} size="lg" labelledBy="app-details-{app.id}">
-  <ModalHeader onclose={() => (showDetails = false)}>
-    <div class="min-w-0">
-      <h2 id="app-details-{app.id}" class="m-0 font-display text-lg font-semibold wrap-break-word text-foreground">
-        {app.name}
-      </h2>
-      <p class="m-0 mt-1 text-sm text-foreground-muted">{app.description}</p>
-    </div>
+<Modal open={showDetails} onclose={() => (showDetails = false)} size="lg">
+  <ModalHeader title={app.name} size="lg" onclose={() => (showDetails = false)}>
+    <p class="m-0 mt-1 text-sm text-foreground-muted">{app.description}</p>
   </ModalHeader>
   <ModalBody class="flex flex-col gap-4">
     {#if app.warning}

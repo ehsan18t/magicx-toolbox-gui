@@ -165,28 +165,24 @@
   size="lg"
   closeOnEscape={step !== "applying"}
   closeOnBackdrop={step !== "applying"}
-  labelledBy="import-modal-title"
 >
-  <ModalHeader onclose={step !== "applying" ? handleClose : undefined}>
-    <div class="flex items-center gap-3">
+  <ModalHeader title="Import Profile" size="lg" onclose={step !== "applying" ? handleClose : undefined}>
+    {#snippet leading()}
       <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
         <Icon icon="mdi:import" width="24" class="text-accent" />
       </div>
-      <div>
-        <h2 id="import-modal-title" class="m-0 text-lg font-bold text-foreground">Import Profile</h2>
-        <p class="m-0 text-sm text-foreground-muted">
-          {#if step === "select"}
-            Select a profile file
-          {:else if step === "review"}
-            Review and configure
-          {:else if step === "applying"}
-            Applying changes...
-          {:else}
-            Complete
-          {/if}
-        </p>
-      </div>
-    </div>
+    {/snippet}
+    <p class="m-0 text-sm text-foreground-muted">
+      {#if step === "select"}
+        Select a profile file
+      {:else if step === "review"}
+        Review and configure
+      {:else if step === "applying"}
+        Applying changes...
+      {:else}
+        Complete
+      {/if}
+    </p>
   </ModalHeader>
 
   <ModalBody>

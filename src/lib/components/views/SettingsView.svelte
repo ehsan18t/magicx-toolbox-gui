@@ -144,7 +144,7 @@
       </div>
     </div>
   {:else}
-    <div class="flex justify-center py-3"><Spinner size="sm" /></div>
+    <div class="flex justify-center py-3"><Spinner size="sm" label="Loading log settings" /></div>
   {/if}
 {/snippet}
 

@@ -30,6 +30,7 @@
     --warning: 42 95% 60%;
     --warning-foreground: 0 0% 0%;
     --error: 353 100% 80%;
+    --error-foreground: 224 71% 4%;
     --info: 199 100% 69%;
 
     --elev-flyout: 0 8px 16px rgb(0 0 0 / 0.4);
@@ -63,6 +64,7 @@
     --warning: 34 100% 31%;
     --warning-foreground: 0 0% 100%;
     --error: 6 75% 44%;
+    --error-foreground: 214 32% 95%;
     --info: 208 100% 36%;
 
     --elev-flyout: 0 8px 16px rgb(15 23 42 / 0.12);
@@ -220,7 +222,6 @@
   --container-dialog-sm: 25rem;
   --container-dialog-md: 32.5rem;
   --container-dialog-lg: 42.5rem;
-  --container-dialog-xl: 57.5rem;
   --container-dialog-full: 75rem;
 
   --width-toast: min(22rem, calc(100vw - 2rem));
@@ -285,7 +286,15 @@
   --color-warning: hsl(var(--warning));
   --color-warning-foreground: hsl(var(--warning-foreground));
   --color-error: hsl(var(--error));
+  --color-error-foreground: hsl(var(--error-foreground));
   --color-info: hsl(var(--info));
+
+  /* Hover is the fill at 90%; accent has its own tuned hover per scheme instead. */
+  --color-error-hover: color-mix(in oklab, var(--color-error) 90%, transparent);
+  --color-warning-hover: color-mix(in oklab, var(--color-warning) 90%, transparent);
+  --color-scrim: rgb(0 0 0 / 0.4);
+  /* Unchecked switch knob, white in both themes; a checked one takes accent-foreground. */
+  --color-thumb: #fff;
 
   /* Windows caption close red, the same in both themes. */
   --color-caption-close: #c42b1c;
@@ -300,6 +309,7 @@
   --transition-duration-slower: 300ms;
   --transition-duration-highlight: 1500ms;
   --transition-duration-activity: 1400ms;
+  --transition-duration-pulse: 2000ms;
 
   --transition-delay-reveal: 150ms;
   --transition-delay-settle: 250ms;
@@ -328,6 +338,7 @@
   --animate-modal-out: modal-out var(--transition-duration-normal) var(--ease-in) forwards;
   --animate-highlight: highlight-pulse var(--transition-duration-highlight) var(--ease-in-out);
   --animate-activity: activity-slide var(--transition-duration-activity) var(--ease-in-out) infinite;
+  --animate-pulse: pulse var(--transition-duration-pulse) var(--ease-in-out) infinite;
 }
 
 @utility drag-enable {
@@ -391,6 +402,12 @@
   30%,
   70% {
     box-shadow: 0 0 0 3px hsl(var(--accent) / 0.45);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
   }
 }
 

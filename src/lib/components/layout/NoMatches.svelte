@@ -9,6 +9,5 @@
   icon="mdi:file-search-outline"
   title="Nothing matches"
   {description}
-  actionText="Search everywhere"
-  onaction={() => pageFilterStore.searchEverywhere()}
+  action={{ label: "Search everywhere", onclick: () => pageFilterStore.searchEverywhere() }}
 />

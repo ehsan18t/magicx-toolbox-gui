@@ -1,17 +1,21 @@
 <script lang="ts">
+  import { cn } from "$lib/utils/cn";
+  import { toPercent } from "./percent";
+
   interface Props {
     value: number;
-    label: string;
     max?: number;
+    label: string;
     showValue?: boolean;
+    class?: string;
   }
 
-  let { value, label, max = 100, showValue = false }: Props = $props();
+  let { value, max = 100, label, showValue = false, class: className }: Props = $props();
 
-  const percent = $derived(Math.min(100, Math.max(0, (value / max) * 100)));
+  const percent = $derived(toPercent(value, max));
 </script>
 
-<div class="flex w-full items-center gap-3">
+<div class={cn("flex w-full items-center gap-3", className)}>
   <div
     class="relative h-4 flex-1 overflow-hidden rounded-full bg-muted"
     role="progressbar"

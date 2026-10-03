@@ -1,16 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
-  import {
-    Badge,
-    Button,
-    Checkbox,
-    IconButton,
-    Modal,
-    ModalBody,
-    ModalFooter,
-    ModalHeader,
-    Switch,
-  } from "$lib/components/ui";
+  import { Badge, Button, Checkbox, Modal, ModalBody, ModalFooter, ModalHeader, Switch } from "$lib/components/ui";
   import { modalStore } from "$lib/stores/modal.svelte";
   import { profileStore } from "$lib/stores/profile.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
@@ -121,25 +111,14 @@
   }
 </script>
 
-<Modal open={isOpen} onclose={modalStore.close} size="lg" labelledBy="export-modal-title">
-  <ModalHeader>
-    <div class="flex items-center gap-3">
+<Modal open={isOpen} onclose={modalStore.close} size="lg">
+  <ModalHeader title="Export Profile" size="lg" onclose={modalStore.close}>
+    {#snippet leading()}
       <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/15">
         <Icon icon="mdi:export" width="24" class="text-accent" />
       </div>
-      <div>
-        <h2 id="export-modal-title" class="m-0 text-lg font-bold text-foreground">Export Profile</h2>
-        <p class="m-0 text-sm text-foreground-muted">
-          {#if step === 1}
-            Select tweaks to include
-          {:else}
-            Enter profile details
-          {/if}
-        </p>
-      </div>
-    </div>
-    <div class="flex items-center gap-2">
-      <!-- Step indicator -->
+    {/snippet}
+    {#snippet actions()}
       <div class="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5">
         <span
           class="flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold {step === 1
@@ -157,8 +136,14 @@
           2
         </span>
       </div>
-      <IconButton icon="mdi:close" label="Close" onclick={modalStore.close} />
-    </div>
+    {/snippet}
+    <p class="m-0 text-sm text-foreground-muted">
+      {#if step === 1}
+        Select tweaks to include
+      {:else}
+        Enter profile details
+      {/if}
+    </p>
   </ModalHeader>
 
   <ModalBody>

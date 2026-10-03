@@ -2,7 +2,7 @@
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { AppRow, TweakRow } from "$lib/components/tweaks";
-  import { EmptyState, SkeletonCard } from "$lib/components/ui";
+  import { EmptyState, SkeletonList } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { elevationStore } from "$lib/stores/elevation.svelte";
@@ -128,23 +128,21 @@
   {/if}
 
   {#if tweaksStore.isLoading && categoryTweaks.length === 0}
-    <SkeletonCard />
+    <SkeletonList />
   {:else if filteredTweaks.length === 0 && filteredApps.length === 0}
     {#if query}
       <EmptyState
         icon="mdi:file-search-outline"
         title="Nothing matches"
         description={`Nothing in ${tab.name} matches "${query}"`}
-        actionText="Search everywhere"
-        onaction={() => pageFilterStore.searchEverywhere()}
+        action={{ label: "Search everywhere", onclick: () => pageFilterStore.searchEverywhere() }}
       />
     {:else if attentionOnly}
       <EmptyState
         icon="mdi:check-circle-outline"
         title="Nothing needs attention"
         description="No tweak in this category needs attention."
-        actionText="Show all"
-        onaction={() => (attentionOnly = false)}
+        action={{ label: "Show all", onclick: () => (attentionOnly = false) }}
       />
     {:else}
       <EmptyState

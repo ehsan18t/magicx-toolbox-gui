@@ -4,15 +4,9 @@
     /** uFuzzy match ranges, flat: [start, end, start, end, …]. */
     ranges?: number[];
     class?: string;
-    highlightClass?: string;
   }
 
-  let {
-    text,
-    ranges = [],
-    class: className,
-    highlightClass = "rounded-sm bg-accent/25 text-foreground",
-  }: Props = $props();
+  let { text, ranges = [], class: className }: Props = $props();
 
   const segments = $derived.by(() => {
     const spans: { start: number; end: number }[] = [];
@@ -43,6 +37,7 @@
 </script>
 
 <span class={className}
-  >{#each segments as segment, i (i)}{#if segment.highlighted}<mark class={highlightClass}>{segment.text}</mark
+  >{#each segments as segment, i (i)}{#if segment.highlighted}<mark class="rounded-sm bg-accent/25 text-foreground"
+        >{segment.text}</mark
       >{:else}{segment.text}{/if}{/each}</span
 >

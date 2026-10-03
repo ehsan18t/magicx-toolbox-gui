@@ -2,7 +2,13 @@
   const ROWS = 4;
 </script>
 
-<div class="flex flex-col gap-2 pb-4">
+<script lang="ts">
+  import { cn } from "$lib/utils/cn";
+
+  let { class: className }: { class?: string } = $props();
+</script>
+
+<div class={cn("flex flex-col gap-2 pb-4", className)}>
   {#each { length: ROWS }, i (i)}
     <div class="relative flex animate-pulse overflow-hidden rounded-lg border border-border bg-card">
       <div class="flex flex-1 flex-col gap-3 p-4">

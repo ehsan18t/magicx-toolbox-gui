@@ -162,7 +162,7 @@
       class="w-full max-w-100 drag-disable"
       trailing={chipTab ? scopeToggle : undefined}
       onbackspace={scoped ? toggleScope : undefined}
-      oninput={handleSearch}
+      onchange={handleSearch}
     />
   </div>
 

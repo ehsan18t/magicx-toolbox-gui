@@ -9,18 +9,8 @@ import type {
   TweakStatus,
   TweakWithStatus,
 } from "$lib/types";
+import type { Tone } from "$lib/components/ui/tone";
 import { plural } from "$lib/utils/format";
-
-export type Tone = "accent" | "success" | "warning" | "error" | "info" | "neutral";
-
-export const TONE_TEXT: Record<Tone, string> = {
-  accent: "text-accent",
-  success: "text-success",
-  warning: "text-warning",
-  error: "text-error",
-  info: "text-info",
-  neutral: "text-foreground-muted",
-};
 
 export const CHECKING = { label: "Checking", icon: "mdi:loading" } as const;
 export const UNKNOWN_ICON = "mdi:help-circle-outline";

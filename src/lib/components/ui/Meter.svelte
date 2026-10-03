@@ -1,14 +1,15 @@
 <script lang="ts">
   import { cn } from "$lib/utils/cn";
+  import { toPercent } from "./percent";
 
   interface Props {
     value: number;
-    max: number;
+    max?: number;
     label: string;
     class?: string;
   }
 
-  let { value, max, label, class: className }: Props = $props();
+  let { value, max = 100, label, class: className }: Props = $props();
 </script>
 
 <span
@@ -16,11 +17,11 @@
   aria-label={label}
   aria-valuemin={0}
   aria-valuemax={max}
-  aria-valuenow={value}
+  aria-valuenow={Math.min(max, Math.max(0, value))}
   class={cn("block h-1 overflow-hidden rounded-full bg-muted", className)}
 >
   <span
     class="block h-full rounded-full bg-accent transition-[width] duration-slower ease-out"
-    style:width="{max > 0 ? (value / max) * 100 : 0}%"
+    style:width="{toPercent(value, max)}%"
   ></span>
 </span>

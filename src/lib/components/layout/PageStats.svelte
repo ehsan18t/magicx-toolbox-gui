@@ -10,6 +10,5 @@
 <p class="m-0 text-xs text-foreground-muted">
   {#each items as { value, label }, i (label)}{i > 0 ? " · " : ""}<span
       class="font-semibold text-foreground tabular-nums">{value}</span
-    >
-    {label}{/each}
+    >{` ${label}`}{/each}
 </p>

@@ -36,16 +36,18 @@
   const onlyOption = $derived(optionLabels.length === 1 ? optionLabels[0] : null);
   const defaultBlocked = $derived(onlyOption !== null && activeOption === onlyOption && !hasPending && !hasSnapshot);
   const segments = $derived.by(() => {
-    const options: { target: string; label: string; disabled: boolean; tip?: string }[] = optionLabels.map((label) => {
-      const unavailable = status.unavailableOptions.some((u) => u.label === label);
-      return { target: label, label: unavailable ? `${label} (unavailable)` : label, disabled: unavailable };
-    });
+    const options: { target: string; label: string; disabled: boolean; tooltip?: string; confirms?: boolean }[] =
+      optionLabels.map((label) => {
+        const unavailable = status.unavailableOptions.some((u) => u.label === label);
+        return { target: label, label: unavailable ? `${label} (unavailable)` : label, disabled: unavailable };
+      });
     if (onlyOption !== null) {
       options.unshift({
         target: SYSTEM_DEFAULT,
         label: "System default",
         disabled: defaultBlocked,
-        tip: defaultBlocked ? "Already set before a snapshot was saved, so there is nothing to restore" : undefined,
+        tooltip: defaultBlocked ? "Already set before a snapshot was saved, so there is nothing to restore" : undefined,
+        confirms: true,
       });
     }
     return options.map((o, i) => ({ ...o, value: i }));

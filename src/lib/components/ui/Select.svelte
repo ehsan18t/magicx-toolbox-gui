@@ -8,8 +8,12 @@
   import { cn } from "$lib/utils/cn";
   import { pop } from "$lib/utils/motion";
   import { tick } from "svelte";
+  import { ICON_SIZE } from "./icon";
+  import { nextEnabledIndex } from "./listNav";
   import Spinner from "./Spinner.svelte";
+  import { PENDING_TINT } from "./tone";
   import type { SelectOption } from "./types";
+  import { BUSY, DIMMED } from "./variants";
 
   interface Props {
     value: T | null;
@@ -77,7 +81,7 @@
     isOpen = true;
     await updatePosition();
     const selectedIdx = options.findIndex((o) => o.value === value);
-    highlightedIndex = selectedIdx >= 0 ? selectedIdx : firstEnabled(0, 1);
+    highlightedIndex = selectedIdx >= 0 ? selectedIdx : nextEnabledIndex(options, -1, 1);
   }
 
   function close() {
@@ -87,7 +91,7 @@
 
   function toggle() {
     if (isOpen) close();
-    else open();
+    else void open();
   }
 
   function selectOption(opt: SelectOption<T>) {
@@ -96,16 +100,6 @@
     if (opt.value !== value) onchange?.(opt.value);
     close();
     triggerEl?.focus();
-  }
-
-  /** First enabled index walking from `from` by `step`, wrapping; -1 when all are disabled. */
-  function firstEnabled(from: number, step: number): number {
-    const len = options.length;
-    for (let i = 0; i < len; i++) {
-      const idx = (((from + step * i) % len) + len) % len;
-      if (!options[idx].disabled) return idx;
-    }
-    return -1;
   }
 
   function highlight(index: number) {
@@ -120,21 +114,21 @@
       case " ":
         e.preventDefault();
         if (isOpen && highlightedIndex >= 0) selectOption(options[highlightedIndex]);
-        else open();
+        else void open();
         break;
       case "ArrowDown":
       case "ArrowUp": {
         e.preventDefault();
         const step = e.key === "ArrowDown" ? 1 : -1;
-        if (isOpen) highlight(firstEnabled(highlightedIndex + step, step));
-        else open();
+        if (isOpen) highlight(nextEnabledIndex(options, highlightedIndex, step));
+        else void open();
         break;
       }
       case "Home":
       case "End":
         if (!isOpen) break;
         e.preventDefault();
-        highlight(e.key === "Home" ? firstEnabled(0, 1) : firstEnabled(options.length - 1, -1));
+        highlight(e.key === "Home" ? nextEnabledIndex(options, -1, 1) : nextEnabledIndex(options, options.length, -1));
         break;
       case "Escape":
         if (isOpen) {
@@ -157,9 +151,13 @@
       ?.scrollIntoView({ block: "nearest" });
   });
 
-  // The menu is fixed-position: any scroll behind it, or a click outside, closes it.
+  // The menu is fixed-position: a click outside, any scroll or resize behind it, or the control going inert closes it.
   $effect(() => {
     if (!isOpen || !triggerEl) return;
+    if (disabled || loading) {
+      close();
+      return;
+    }
 
     const onClick = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -172,9 +170,11 @@
     }
 
     window.addEventListener("click", onClick);
+    window.addEventListener("resize", close);
     for (const el of scrollers) el.addEventListener("scroll", close, { passive: true });
     return () => {
       window.removeEventListener("click", onClick);
+      window.removeEventListener("resize", close);
       for (const el of scrollers) el.removeEventListener("scroll", close);
     };
   });
@@ -197,9 +197,9 @@
       "flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-md border bg-secondary px-3 text-ui",
       "border-border text-foreground hover:border-border-hover hover:bg-secondary-hover",
       isOpen && "border-accent",
-      pending && "border-warning/60 bg-warning/10 text-warning",
-      loading && "cursor-wait opacity-70",
-      disabled && "cursor-not-allowed opacity-60",
+      pending && [PENDING_TINT, "text-warning"],
+      loading && BUSY,
+      disabled && ["cursor-not-allowed", DIMMED],
     )}
   >
     <span class={cn("truncate", !selectedOption && "text-foreground-muted")}>
@@ -211,14 +211,15 @@
       {:else}
         <Icon
           icon="mdi:chevron-down"
-          class={cn("h-4 w-4 text-foreground-muted transition-transform duration-normal", isOpen && "rotate-180")}
+          width={ICON_SIZE.md}
+          class={cn("text-foreground-muted transition-transform duration-normal", isOpen && "rotate-180")}
         />
       {/if}
     </span>
   </button>
 </div>
 
-<!-- Dropdown rendered with fixed position to escape overflow:hidden containers -->
+<!-- Fixed, so an overflow-hidden ancestor cannot clip it. -->
 {#if isOpen}
   <div
     bind:this={menuEl}
@@ -243,8 +244,8 @@
         class={cn(
           "relative flex w-full cursor-pointer items-center rounded px-3 py-1.5 text-left text-ui text-foreground",
           highlightedIndex === i && "bg-muted",
-          opt.value === value && "bg-muted font-medium",
-          opt.disabled && "cursor-not-allowed text-foreground-muted opacity-50",
+          opt.value === value && "font-medium",
+          opt.disabled && ["cursor-not-allowed text-foreground-muted", DIMMED],
         )}
       >
         {#if opt.value === value}

@@ -71,16 +71,14 @@
       icon="mdi:alert-circle"
       title="Search failed"
       description={searchStore.error}
-      actionText="Retry"
-      onaction={() => searchStore.search()}
+      action={{ label: "Retry", onclick: () => searchStore.search() }}
     />
   {:else if !searchStore.isActive}
     <EmptyState
       icon="mdi:text-search"
       title="Start typing to search"
       description="Use the search box in the title bar, or press Ctrl+K from anywhere."
-      actionText="Focus search"
-      onaction={() => navigationStore.focusSearch()}
+      action={{ label: "Focus search", onclick: () => navigationStore.focusSearch() }}
     />
   {:else if !searchStore.searchedQuery}
     <!-- The first search is still debouncing: show nothing rather than a false "No results". -->
@@ -89,8 +87,7 @@
       icon="mdi:file-search-outline"
       title="No results"
       description={`Nothing matches "${searchStore.searchedQuery}"`}
-      actionText="Clear search"
-      onaction={() => searchStore.setQuery("")}
+      action={{ label: "Clear search", onclick: () => searchStore.setQuery("") }}
     />
   {:else}
     <div class="flex animate-fade-in flex-col gap-2">

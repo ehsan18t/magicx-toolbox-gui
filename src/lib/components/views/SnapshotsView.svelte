@@ -2,7 +2,7 @@
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { GroupedTweakList } from "$lib/components/tweaks";
-  import { EmptyState, SkeletonCard } from "$lib/components/ui";
+  import { EmptyState, SkeletonList } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
@@ -53,14 +53,13 @@
   {/snippet}
 
   {#if tweaksStore.isLoading && snapshotTweaks.length === 0}
-    <SkeletonCard />
+    <SkeletonList />
   {:else if snapshotTweaks.length === 0}
     <EmptyState
       icon="mdi:backup-restore"
       title="No snapshots yet"
       description="Applying a tweak saves the state it replaces as a snapshot, so you can restore it later."
-      actionText="Browse tweaks"
-      onaction={() => navigationStore.navigateToTab("overview")}
+      action={{ label: "Browse tweaks", onclick: () => navigationStore.navigateToTab("overview") }}
       showIconCircle
     />
   {:else if filteredTweaks.length === 0}
@@ -68,8 +67,7 @@
       icon="mdi:file-search-outline"
       title="Nothing matches"
       description={`No snapshots match "${pageFilterStore.query.trim()}"`}
-      actionText="Search everywhere"
-      onaction={() => pageFilterStore.searchEverywhere()}
+      action={{ label: "Search everywhere", onclick: () => pageFilterStore.searchEverywhere() }}
     />
   {:else}
     <GroupedTweakList tweaks={filteredTweaks} />

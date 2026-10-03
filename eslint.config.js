@@ -96,7 +96,7 @@ export default [
 
   // The unconfigured merge drops app.css's custom names (`text-ui` read as a colour).
   {
-    files: ["src/**/*.{ts,svelte}"],
+    files: ["src/**/*.{js,ts,svelte}"],
     ignores: ["src/lib/utils/cn.ts"],
     rules: {
       "no-restricted-imports": [
@@ -106,6 +106,7 @@ export default [
             { name: "tailwind-merge", message: "Use cn from $lib/utils/cn." },
             { name: "tailwind-variants", message: "Use tv from $lib/utils/cn." },
           ],
+          patterns: [{ group: ["tailwind-merge/*", "tailwind-variants/*"], message: "Use $lib/utils/cn." }],
         },
       ],
     },

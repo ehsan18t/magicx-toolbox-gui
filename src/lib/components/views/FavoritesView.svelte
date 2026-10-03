@@ -2,7 +2,7 @@
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
   import { GroupedTweakList } from "$lib/components/tweaks";
-  import { EmptyState, SkeletonCard } from "$lib/components/ui";
+  import { EmptyState, SkeletonList } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
@@ -78,14 +78,13 @@
   {/snippet}
 
   {#if tweaksStore.isLoading && favoriteTweaks.length === 0}
-    <SkeletonCard />
+    <SkeletonList />
   {:else if favoriteTweaks.length === 0}
     <EmptyState
       icon="mdi:star-outline"
       title="No favorites yet"
       description="Select the star on any tweak to keep it here for quick access."
-      actionText="Browse tweaks"
-      onaction={() => navigationStore.navigateToTab("overview")}
+      action={{ label: "Browse tweaks", onclick: () => navigationStore.navigateToTab("overview") }}
       showIconCircle
     />
   {:else if filteredTweaks.length === 0}
@@ -93,8 +92,7 @@
       icon="mdi:file-search-outline"
       title="Nothing matches"
       description={`No favorites match "${pageFilterStore.query.trim()}"`}
-      actionText="Search everywhere"
-      onaction={() => pageFilterStore.searchEverywhere()}
+      action={{ label: "Search everywhere", onclick: () => pageFilterStore.searchEverywhere() }}
     />
   {:else}
     <GroupedTweakList tweaks={filteredTweaks} />

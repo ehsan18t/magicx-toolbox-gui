@@ -17,13 +17,11 @@
 </script>
 
 <Card as="section" class={cn("overflow-hidden", className)} aria-labelledby={titleId}>
-  {#if actions}
-    <div class="flex items-center justify-between gap-3 border-b border-border py-1 pr-1 pl-3">
-      <h2 id={titleId} class="m-0 text-ui font-semibold">{title}</h2>
-      {@render actions()}
-    </div>
-  {:else}
-    <h2 id={titleId} class="m-0 border-b border-border px-3 py-2 text-ui font-semibold">{title}</h2>
-  {/if}
+  <div
+    class={["border-b border-border", actions ? "flex items-center justify-between gap-3 py-1 pr-1 pl-3" : "px-3 py-2"]}
+  >
+    <h2 id={titleId} class="m-0 text-ui font-semibold">{title}</h2>
+    {@render actions?.()}
+  </div>
   {@render children()}
 </Card>

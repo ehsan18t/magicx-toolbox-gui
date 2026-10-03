@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
+  import { Count } from "$lib/components/ui";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { categoriesStore } from "$lib/stores/tweaksData.svelte";
   import type { TweakWithStatus } from "$lib/types";
@@ -29,7 +30,7 @@
         >
           <Icon icon={categoriesStore.icon(categoryId)} width="16" class="shrink-0 text-foreground-muted" />
           <span class="truncate">{categoriesStore.name(categoryId)}</span>
-          <span class="text-xs font-normal text-foreground-subtle tabular-nums">{list.length}</span>
+          <Count value={list.length} class="font-normal" />
           <Icon
             icon="mdi:chevron-right"
             width="16"

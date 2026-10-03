@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Icon } from "$lib/components/shared";
+  import { Count } from "$lib/components/ui";
   import { tweakDetailsModalStore } from "$lib/stores/tweakDetailsModal.svelte";
   import { pendingChangesStore, pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
@@ -54,7 +55,7 @@
       <h3 class="m-0 mb-1.5 flex items-center gap-2 text-ui font-semibold">
         <Icon {icon} width="16" class={tone} />
         {title}
-        <span class="text-xs font-normal text-foreground-subtle tabular-nums">{items.length}</span>
+        <Count value={items.length} class="font-normal" />
       </h3>
       <ul class="m-0 list-none space-y-0.5 p-0">
         {#each items as t (t.definition.id)}

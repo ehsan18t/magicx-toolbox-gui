@@ -126,7 +126,7 @@
           class="w-32"
           onchange={(v) => (source = v as "all" | LogSource)}
         />
-        <SearchInput value={query} placeholder="Search logs" class="w-44 min-w-0" oninput={(v) => (query = v)} />
+        <SearchInput value={query} placeholder="Search logs" class="w-44 min-w-0" onchange={(v) => (query = v)} />
 
         <IconButton
           icon="mdi:broom"

@@ -1,7 +1,8 @@
 <script lang="ts" module>
+  import { ICON_SIZE } from "./icon";
   import type { IconButtonSize } from "./variants";
 
-  const ICON_SIZE: Record<IconButtonSize, number> = { xs: 14, sm: 16, md: 18 };
+  const GLYPH: Record<IconButtonSize, number> = { xs: ICON_SIZE.sm, sm: ICON_SIZE.md, md: ICON_SIZE.lg };
 </script>
 
 <script lang="ts">
@@ -10,10 +11,11 @@
   import type { HTMLButtonAttributes } from "svelte/elements";
   import { iconButton } from "./variants";
 
-  type Props = Omit<HTMLButtonAttributes, "children" | "class"> & {
-    class?: string;
+  // The name is `label`, else the tooltip; given both, the tooltip becomes the description.
+  type Props = Omit<HTMLButtonAttributes, "children" | "class" | "aria-label" | "aria-labelledby"> & {
     icon: string;
     size?: IconButtonSize;
+    class?: string;
   } & ({ label: string; tooltip?: string } | { label?: string; tooltip: string });
 
   let { icon, size = "md", label, tooltip, class: className, ...rest }: Props = $props();
@@ -26,5 +28,5 @@
   use:tooltipAction={tooltip}
   {...rest}
 >
-  <Icon {icon} width={ICON_SIZE[size]} />
+  <Icon {icon} width={GLYPH[size]} />
 </button>

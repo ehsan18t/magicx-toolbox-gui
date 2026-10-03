@@ -2,6 +2,8 @@
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
   import type { Snippet } from "svelte";
+  import { ICON_SIZE } from "./icon";
+  import IconButton from "./IconButton.svelte";
 
   interface Props {
     value: string;
@@ -10,7 +12,7 @@
     /** Accessible name; defaults to the placeholder. */
     label?: string;
     inputRef?: HTMLInputElement | null;
-    oninput?: (value: string) => void;
+    onchange?: (value: string) => void;
     /** After the clear button, e.g. a scope toggle. */
     trailing?: Snippet;
     /** Backspace in an empty box, e.g. to drop that scope. */
@@ -23,7 +25,7 @@
     class: className,
     label,
     inputRef = $bindable(null),
-    oninput,
+    onchange,
     trailing,
     onbackspace,
   }: Props = $props();
@@ -32,7 +34,7 @@
   const inputId = $props.id();
 
   function handleClear() {
-    oninput?.("");
+    onchange?.("");
     inputRef?.focus();
   }
 
@@ -54,7 +56,7 @@
     className,
   )}
 >
-  <Icon icon="mdi:magnify" width="16" class="shrink-0 text-foreground-muted" />
+  <Icon icon="mdi:magnify" width={ICON_SIZE.md} class="shrink-0 text-foreground-muted" />
   <input
     bind:this={inputRef}
     id={inputId}
@@ -62,19 +64,12 @@
     {placeholder}
     {value}
     aria-label={label ?? placeholder}
-    oninput={(e) => oninput?.(e.currentTarget.value)}
+    oninput={(e) => onchange?.(e.currentTarget.value)}
     onkeydown={handleKeydown}
     class="min-w-0 flex-1 border-0 bg-transparent text-ui text-foreground outline-none placeholder:text-foreground-subtle"
   />
   {#if value}
-    <button
-      type="button"
-      onclick={handleClear}
-      class="flex shrink-0 animate-pop-in cursor-pointer rounded p-0.5 text-foreground-muted hover:bg-muted hover:text-foreground"
-      aria-label="Clear search"
-    >
-      <Icon icon="mdi:close" width="14" />
-    </button>
+    <IconButton icon="mdi:close" size="xs" label="Clear search" class="animate-pop-in" onclick={handleClear} />
   {/if}
-  {#if trailing}{@render trailing()}{/if}
+  {@render trailing?.()}
 </label>
