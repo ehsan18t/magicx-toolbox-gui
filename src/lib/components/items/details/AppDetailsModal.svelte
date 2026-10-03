@@ -16,8 +16,8 @@
     </ModalHeader>
     <ModalBody class="flex flex-col gap-4">
       {#if app.warning}
-        <Callout tone="warning" density="panel" icon="mdi:alert">
-          <p class="m-0 text-ui leading-relaxed text-foreground">{app.warning}</p>
+        <Callout tone="warning" density="note" icon="mdi:alert">
+          <span>{app.warning}</span>
         </Callout>
       {/if}
       {#if permanent}
