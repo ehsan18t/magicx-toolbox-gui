@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
+  import { tooltip } from "$lib/attachments/tooltip.svelte";
   import { Icon } from "$lib/components/shared";
   import { Dot } from "$lib/components/ui";
   import { type IconName, type TextTone, TONE_FILL, TONE_TEXT } from "$lib/design";
@@ -44,9 +44,11 @@
     : 'hover:bg-muted'}"
   aria-current={active ? "page" : undefined}
   aria-label={[label, trailing, alert, pending].filter(Boolean).join(", ")}
-  use:tooltip={isOpen
-    ? [alert, pending].filter(Boolean).join(SEP) || null
-    : [label, trailing, alert, pending].filter(Boolean).join(SEP)}
+  {@attach tooltip(() =>
+    isOpen
+      ? [alert, pending].filter(Boolean).join(SEP) || null
+      : [label, trailing, alert, pending].filter(Boolean).join(SEP),
+  )}
   {onclick}
 >
   <span class="relative flex w-5 shrink-0 justify-center">

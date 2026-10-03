@@ -2,6 +2,7 @@
 
 import type { ItemKind } from "$lib/types";
 import { errorMessage } from "$lib/utils/error";
+import { FIELD_SEP, type FieldBounds, fieldRanges } from "$lib/utils/fieldRanges";
 import { logError } from "$lib/utils/logger";
 import uFuzzy from "@leeoniya/ufuzzy";
 import { untrack } from "svelte";
@@ -21,16 +22,12 @@ export interface SearchResult {
   infoRanges: number[];
 }
 
-interface HaystackEntry {
+interface HaystackEntry extends FieldBounds {
   kind: ItemKind;
   id: string;
   categoryId: string;
-  nameEnd: number;
-  descEnd: number;
 }
 
-/** Joins name, description and info into one searchable string. */
-const FIELD_SEP = " | ";
 /** Permutations tried for out-of-order terms (2 = 2!). */
 const OUT_OF_ORDER = 2;
 /** Matches ranked and highlighted; beyond this uFuzzy only filters. */
@@ -54,8 +51,6 @@ let query = $state("");
 let searchedQuery = $state("");
 // Bumped by search(), so a retry re-runs the same query.
 let runs = $state(0);
-// A tweak or app id the rows scroll to and flash once.
-let highlightId = $state<string | null>(null);
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Keyed on the model versions, not the lists: status events replace the tweak list but never its text.
@@ -89,36 +84,6 @@ const haystack = $derived.by(() => {
     return { strings, entries };
   });
 });
-
-/** Splits ranges over the joined string back into per-field ranges. */
-function fieldRanges(ranges: number[], entry: HaystackEntry) {
-  const nameRanges: number[] = [];
-  const descriptionRanges: number[] = [];
-  const infoRanges: number[] = [];
-
-  const { nameEnd, descEnd } = entry;
-  const descStart = nameEnd + FIELD_SEP.length;
-  const infoStart = descEnd + FIELD_SEP.length;
-
-  for (let i = 0; i < ranges.length; i += 2) {
-    const start = ranges[i];
-    const end = ranges[i + 1];
-    if (end <= nameEnd) {
-      nameRanges.push(start, end);
-    } else if (start >= infoStart) {
-      infoRanges.push(start - infoStart, end - infoStart);
-    } else if (start >= descStart && end <= descEnd) {
-      descriptionRanges.push(start - descStart, end - descStart);
-    } else {
-      if (start < nameEnd) nameRanges.push(start, Math.min(end, nameEnd));
-      if (start < descEnd && end > descStart) {
-        descriptionRanges.push(Math.max(0, start - descStart), Math.min(end - descStart, descEnd - descStart));
-      }
-      if (end > infoStart) infoRanges.push(Math.max(0, start - infoStart), end - infoStart);
-    }
-  }
-  return { nameRanges, descriptionRanges, infoRanges };
-}
 
 function toResult(idx: number, ranges: number[]): SearchResult {
   const entry = haystack.entries[idx];
@@ -197,10 +162,6 @@ export const searchStore = {
     return isActive;
   },
 
-  get highlightId() {
-    return highlightId;
-  },
-
   /** Searches after a debounce; an empty query clears at once. */
   setQuery(newQuery: string) {
     query = newQuery;
@@ -226,8 +187,4 @@ export const searchStore = {
   search,
 
   fuzzyMatches,
-
-  setHighlight(id: string | null) {
-    highlightId = id;
-  },
 };

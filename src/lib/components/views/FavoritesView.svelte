@@ -1,26 +1,11 @@
 <script lang="ts">
   import { Button } from "$lib/components/ui";
-  import { confirmStore } from "$lib/stores/confirm.svelte";
   import { favoritesStore } from "$lib/stores/favorites.svelte";
-  import { toastStore } from "$lib/stores/toast.svelte";
+  import { pageTweaks } from "$lib/stores/navigation.svelte";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
-  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
-  import { plural } from "$lib/utils/format";
   import TweakCollectionView from "./TweakCollectionView.svelte";
 
-  const favorites = $derived(tweaksStore.favorites);
-
-  async function clearAll() {
-    const ok = await confirmStore.ask({
-      title: "Clear all favorites?",
-      message: `Remove ${plural(favorites.length, "tweak")} from your favorites? This won't change the tweaks themselves.`,
-      confirmText: "Clear favorites",
-      variant: "danger",
-    });
-    if (!ok) return;
-    favoritesStore.clear();
-    toastStore.success("All favorites cleared");
-  }
+  const favorites = $derived(pageTweaks("favorites") ?? []);
 </script>
 
 <TweakCollectionView
@@ -38,7 +23,12 @@
   }}
 >
   {#snippet actions()}
-    <Button variant="ghost" icon="mdi:star-off" disabled={tweakActionsStore.isBusy} onclick={clearAll}>
+    <Button
+      variant="ghost"
+      icon="mdi:star-off"
+      disabled={tweakActionsStore.isBusy}
+      onclick={() => favoritesStore.clearWithConfirm(favorites.map((t) => t.definition.id))}
+    >
       Clear favorites
     </Button>
   {/snippet}

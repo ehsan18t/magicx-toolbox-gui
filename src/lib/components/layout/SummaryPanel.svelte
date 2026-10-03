@@ -1,6 +1,7 @@
 <script lang="ts" module>
   import { TONE_FILL } from "$lib/design";
-  import { CHECKING, SYSTEM_DEFAULT_LABEL, type Tallies } from "$lib/utils/tweakPresentation";
+  import { CHECKING } from "$lib/utils/presentation";
+  import { SYSTEM_DEFAULT_LABEL, type Tallies } from "$lib/utils/tweakPresentation";
 
   // Bar and legend order.
   const SEGMENTS: { state: keyof Tallies["byState"]; label: string; fill: string }[] = [
@@ -21,7 +22,8 @@
   import type { TweakWithStatus } from "$lib/types";
   import { capitalize } from "$lib/utils/format";
   import { expand, reducedMotion } from "$lib/utils/motion";
-  import { attentionCause, ELEVATE_REMEDY, rowDomId, tallies } from "$lib/utils/tweakPresentation";
+  import { ELEVATE_REMEDY } from "$lib/utils/presentation";
+  import { attentionCause, rowDomId, tallies } from "$lib/utils/tweakPresentation";
   import AppliedMeter from "./AppliedMeter.svelte";
 
   interface Props {

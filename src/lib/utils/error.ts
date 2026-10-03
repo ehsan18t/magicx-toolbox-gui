@@ -1,5 +1,5 @@
-import type { BackendErrorCode, Level } from "$lib/types";
-import { ELEVATE_HINT } from "$lib/utils/tweakPresentation";
+import { BACKEND_ERROR_CODES, type BackendErrorCode, type Level } from "$lib/types";
+import { ELEVATE_HINT } from "$lib/utils/presentation";
 
 /** Tauri rejects with the backend's serialized `{ code, message }` object, not an `Error`. */
 export interface BackendError {
@@ -8,8 +8,8 @@ export interface BackendError {
 }
 
 function asBackendError(error: unknown): BackendError | null {
-  const candidate = error as Partial<BackendError> | null | undefined;
-  return typeof candidate?.code === "string" && typeof candidate.message === "string"
+  const candidate = error as { code?: unknown; message?: unknown } | null | undefined;
+  return (BACKEND_ERROR_CODES as readonly unknown[]).includes(candidate?.code) && typeof candidate?.message === "string"
     ? (candidate as BackendError)
     : null;
 }

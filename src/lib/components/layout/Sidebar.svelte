@@ -4,14 +4,13 @@
 </script>
 
 <script lang="ts">
-  import { overflowHints } from "$lib/actions/overflowHints";
+  import { overflowHints } from "$lib/attachments/overflowHints";
   import { card, IconButton, indicator as indicatorBar, Skeleton } from "$lib/components/ui";
-  import { favoritesStore } from "$lib/stores/favorites.svelte";
-  import { navigationStore, type TabDefinition, type TabId } from "$lib/stores/navigation.svelte";
+  import { navigationStore, pageTweaks, type TabId } from "$lib/stores/navigation.svelte";
   import { sidebarStore } from "$lib/stores/sidebar.svelte";
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
-  import { isComplete } from "$lib/utils/categoryStats";
+  import { isComplete } from "$lib/utils/tweakPresentation";
   import { plural } from "$lib/utils/format";
   import { fade, reducedMotion } from "$lib/utils/motion";
   import SidebarFooter from "./SidebarFooter.svelte";
@@ -21,6 +20,7 @@
   let moreAbove = $state(false);
   let moreBelow = $state(false);
   let scrollEl = $state<HTMLElement | null>(null);
+  let drawerEl = $state<HTMLElement | null>(null);
   const activeTab = $derived(navigationStore.activeTab);
   const categoryStats = $derived(categoriesStore.stats);
   const pendingByCategory = $derived(pendingChangesStore.countByCategory);
@@ -50,23 +50,34 @@
     };
   });
 
-  function go(tab: TabDefinition) {
-    navigationStore.navigateToTab(tab.id);
+  function go(navigate: () => void) {
+    navigate();
     sidebarStore.closeOverlay();
   }
 
-  function fixedCount(id: TabId): number {
-    if (id === "favorites") return favoritesStore.count;
-    if (id === "snapshots") return tweaksStore.withSnapshot.length;
-    return 0;
+  // The drawer is modal: Tab wraps inside it instead of reaching the content under the scrim.
+  function containTab(e: KeyboardEvent) {
+    if (!drawerEl) return;
+    const items = [...drawerEl.querySelectorAll<HTMLElement>("button:not([disabled]):not([tabindex='-1'])")];
+    const first = items[0];
+    const last = items.at(-1);
+    if (!first || !last) return;
+    const active = document.activeElement;
+    const edge = e.shiftKey ? first : last;
+    if (drawerEl.contains(active) && active !== edge) return;
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key !== "Escape" || e.defaultPrevented || !sidebarStore.isOverlay) return;
-    // An open dialog takes Escape, whichever window listener runs first.
+    if (e.defaultPrevented || !sidebarStore.isOverlay) return;
+    // An open dialog takes Escape and Tab, whichever window listener runs first.
     if (document.querySelector('[aria-modal="true"]')) return;
-    e.preventDefault();
-    sidebarStore.closeOverlay();
+    if (e.key === "Tab") containTab(e);
+    else if (e.key === "Escape") {
+      e.preventDefault();
+      sidebarStore.closeOverlay();
+    }
   }
 </script>
 
@@ -89,6 +100,7 @@
   aria-label="Main"
 >
   <div
+    bind:this={drawerEl}
     class="flex h-full flex-col {sidebarStore.isOverlay
       ? card({
           elevation: 'flyout',
@@ -101,10 +113,10 @@
       <div
         bind:this={scrollEl}
         class="relative flex min-h-0 flex-1 scrollbar-none flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-1.5 pt-1 pb-2"
-        use:overflowHints={(above, below) => {
+        {@attach overflowHints((above, below) => {
           moreAbove = above;
           moreBelow = below;
-        }}
+        })}
       >
         {#if indicator}
           <span
@@ -119,12 +131,12 @@
           ></span>
         {/if}
         {#each navigationStore.fixedTabs as tab (tab.id)}
-          {@const count = fixedCount(tab.id)}
+          {@const count = pageTweaks(tab.id)?.length ?? 0}
           <SidebarNavItem
             label={tab.name}
             icon={tab.icon}
             active={activeTab === tab.id}
-            onclick={() => go(tab)}
+            onclick={() => go(() => navigationStore.navigateToPage(tab.id))}
             trailing={count > 0 ? String(count) : ""}
           />
         {/each}
@@ -140,7 +152,7 @@
             label={tab.name}
             icon={tab.icon}
             active={activeTab === tab.id}
-            onclick={() => go(tab)}
+            onclick={() => go(() => navigationStore.navigateToCategory(tab.id))}
             trailing={s ? `${s.applied}/${s.total}` : ""}
             trailingTone={s && isComplete(s) ? "success" : undefined}
             alert={s?.attention ? `${plural(s.attention, "needs", "need")} attention` : ""}

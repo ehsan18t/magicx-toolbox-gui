@@ -1,6 +1,6 @@
 import type { IconName } from "$lib/design";
 import type { AppActionKind, AppOperationKind, AppStatusView, AppView, Availability } from "$lib/types";
-import { CHECKING, ELEVATE_HINT, type MetaFact, UNKNOWN_ICON, UNKNOWN_NEEDS_ADMIN } from "./tweakPresentation";
+import { CHECKING, ELEVATE_HINT, type MetaFact, UNKNOWN_ICON, UNKNOWN_NEEDS_ADMIN } from "./presentation";
 
 export interface AppAction {
   kind: AppActionKind;
@@ -79,10 +79,11 @@ export function appAction(app: AppView, status: AppStatusView | undefined, scanE
 export const isPermanent = (status: AppStatusView | undefined): boolean =>
   status?.install_route === "none" && status.presence.state !== "absent";
 
+export const PERMANENT_REMOVAL =
+  "There is no install source for this app on this PC, so removing it cannot be undone from here.";
+
 export function removeConfirmMessage(app: AppView, permanent: boolean): string {
   const scope = app.source === "appx" ? "for every account on this PC" : "for your account";
-  const outcome = permanent
-    ? `${app.name} is removed ${scope} and has no install source on this PC, so this cannot be undone.`
-    : `${app.name} is removed ${scope}. You can reinstall it later from here.`;
+  const outcome = `${app.name} is removed ${scope}. ${permanent ? PERMANENT_REMOVAL : "You can reinstall it later from here."}`;
   return app.warning ? `${outcome} ${app.warning}` : outcome;
 }

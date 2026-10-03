@@ -6,7 +6,7 @@
 </script>
 
 <script lang="ts">
-  import { tooltip as tooltipAction } from "$lib/actions/tooltip";
+  import { tooltip as withTooltip } from "$lib/attachments/tooltip.svelte";
   import { Icon } from "$lib/components/shared";
   import type { HTMLButtonAttributes } from "svelte/elements";
   import Spinner from "./Spinner.svelte";
@@ -44,7 +44,7 @@
   disabled={disabled || loading}
   aria-busy={loading}
   aria-label={label ?? tooltip}
-  use:tooltipAction={tooltip}
+  {@attach withTooltip(() => tooltip)}
   {...rest}
 >
   {#if loading}

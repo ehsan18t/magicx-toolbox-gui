@@ -3,11 +3,13 @@
 </script>
 
 <script lang="ts" generics="T extends string | number">
-  import { textIfCut, tooltip } from "$lib/actions/tooltip";
+  import { textIfCut, tooltip } from "$lib/attachments/tooltip.svelte";
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
   import { glide } from "$lib/utils/motion";
   import { PENDING_TINT } from "$lib/design";
+  import DisabledReason from "./DisabledReason.svelte";
+  import { blockedReason, reasonAttrs } from "./disabledReason";
   import { nextEnabledIndex, radioKeyIndex } from "./listNav";
   import Spinner from "./Spinner.svelte";
   import type { SegmentOption } from "./types";
@@ -21,6 +23,8 @@
     pending?: boolean;
     loading?: boolean;
     disabled?: boolean;
+    /** Why it is disabled: keeps the group focusable and describes it. */
+    disabledReason?: string | null;
     class?: string;
     onchange?: (value: T) => void;
   }
@@ -32,9 +36,18 @@
     pending = false,
     loading = false,
     disabled = false,
+    disabledReason,
     class: className,
     onchange,
   }: Props = $props();
+
+  const id = $props.id();
+  const reasonId = (i: number) => `${id}-reason-${i}`;
+  const groupReason = $derived(blockedReason(disabled, loading, disabledReason));
+  // A disabled option that says why stays reachable by arrow keys; `choose` still refuses it.
+  const isReasoned = (opt: SegmentOption<T>) => !!opt.disabled && !!opt.tooltip;
+  const navItems = $derived(options.map((o) => ({ disabled: o.disabled && !isReasoned(o) })));
+  const reasonOf = (opt: SegmentOption<T>) => groupReason ?? (isReasoned(opt) ? opt.tooltip : null);
 
   const selectedIndex = $derived(options.findIndex((o) => o.value === value));
   // Only long labels give up width, so a short sibling is never cut to make room for them.
@@ -57,7 +70,7 @@
   });
 
   function choose(opt: SegmentOption<T>) {
-    if (!disabled && !loading && opt.value !== value) onchange?.(opt.value);
+    if (!disabled && !loading && !opt.disabled && opt.value !== value) onchange?.(opt.value);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -66,7 +79,7 @@
     const focused = segments.indexOf(document.activeElement as HTMLElement);
     const from = focused >= 0 ? focused : selectedIndex;
 
-    const next = radioKeyIndex(options, from, e.key);
+    const next = radioKeyIndex(navItems, from, e.key);
     if (next === null) return;
     e.preventDefault();
     if (next < 0) return;
@@ -91,17 +104,19 @@
 >
   {#each options as opt, i (opt.value)}
     {@const isSelected = opt.value === value}
+    {@const reason = reasonOf(opt)}
     <button
       type="button"
       role="radio"
       aria-checked={isSelected}
-      aria-disabled={loading || undefined}
+      {...reasonAttrs(reason, reasonId(i), loading)}
       tabindex={i === tabStopIndex ? 0 : -1}
-      disabled={disabled || opt.disabled}
+      disabled={(disabled && !groupReason) || (opt.disabled && !reason)}
       class={cn(
         "relative inline-flex h-7 items-center justify-center gap-1.5 rounded px-3 text-ui font-medium whitespace-nowrap",
         shrinks(i) ? "min-w-0" : "shrink-0",
         "outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed aria-disabled:cursor-wait",
+        reason && !loading && "aria-disabled:cursor-not-allowed",
         isSelected
           ? cn(
               "before:absolute before:inset-0 before:-z-1 before:origin-left before:rounded before:shadow-sm before:transition-colors",
@@ -114,7 +129,7 @@
             ),
       )}
       onclick={() => choose(opt)}
-      use:tooltip={opt.tooltip ?? textIfCut(opt.label, (node) => node.lastElementChild)}
+      {@attach tooltip(() => opt.tooltip ?? textIfCut(opt.label, (node) => node.lastElementChild))}
     >
       {#if loading && isSelected}
         <Spinner size="xs" tone="current" class="shrink-0" />
@@ -122,6 +137,7 @@
         <Icon icon={opt.icon} size="xs" class="shrink-0" />
       {/if}
       <span class="truncate">{opt.label}</span>
+      <DisabledReason id={reasonId(i)} {reason} />
     </button>
   {/each}
 </div>

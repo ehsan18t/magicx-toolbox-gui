@@ -5,20 +5,19 @@
   import { AboutModal, ConfirmHost, ProfileImportModal, UpdateModal } from "$lib/components/modals";
   import { RETIRED_STORAGE_KEYS } from "$lib/config/app";
   import { appInfoStore } from "$lib/stores/appInfo.svelte";
+  import { bootStore } from "$lib/stores/boot.svelte";
   import { colorSchemeStore } from "$lib/stores/colorScheme.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { themeStore } from "$lib/stores/theme.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
-  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { updateStore } from "$lib/stores/update.svelte";
-  import { errorMessage } from "$lib/utils/error";
   import { installErrorForwarding, logError } from "$lib/utils/logger";
   import "@/app.css";
   import { onMount, type Snippet } from "svelte";
 
   let { children }: { children: Snippet } = $props();
 
-  let initError = $state<string | null>(null);
   let shell = $state<HTMLElement | null>(null);
 
   function handleGlobalKeydown(e: KeyboardEvent) {
@@ -30,6 +29,8 @@
     const isK = key.toLowerCase() === "k" || (!/^[a-z]$/i.test(key) && e.code === "KeyK");
     if (!isK) return;
     e.preventDefault();
+    // Not behind a dialog or the applying overlay: switching the page there would close or strand them.
+    if (tweakActionsStore.isBusy || document.querySelector('[aria-modal="true"]')) return;
     navigationStore.focusSearch();
   }
 
@@ -51,20 +52,14 @@
     colorSchemeStore.init();
     void appInfoStore.load();
 
-    try {
-      await tweaksStore.load();
-    } catch (error) {
-      initError = errorMessage(error);
-      logError("Failed to load the tweak model", error);
-    }
-
-    const initialLoader = document.getElementById("initial-loader");
-    if (initialLoader) {
-      initialLoader.addEventListener("animationend", (e) => e.target === initialLoader && initialLoader.remove());
-      initialLoader.classList.add("fade-out");
-    }
-
-    if (!initError) updateStore.autoCheckIfDue();
+    await bootStore.load(() => {
+      const initialLoader = document.getElementById("initial-loader");
+      if (initialLoader) {
+        initialLoader.addEventListener("animationend", (e) => e.target === initialLoader && initialLoader.remove());
+        initialLoader.classList.add("fade-out");
+      }
+      if (!bootStore.error) updateStore.autoCheckIfDue();
+    });
   }
 
   onMount(() => {
@@ -81,14 +76,14 @@
 <div class="flex h-dvh flex-col overflow-hidden" bind:this={shell}>
   <TitleBar />
   <div class="min-h-0 flex-1">
-    {#if initError}
-      <LoadError message={initError} />
+    {#if bootStore.error}
+      <LoadError message={bootStore.error} />
     {:else}
       {@render children()}
     {/if}
   </div>
   <!-- Otherwise the page docks it inside its content column, clear of the sidebar. -->
-  {#if initError}<LogsPanel />{/if}
+  {#if bootStore.error}<LogsPanel />{/if}
 </div>
 
 <AboutModal />

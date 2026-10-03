@@ -4,13 +4,8 @@
   import { HEADING } from "$lib/design";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import {
-    availabilityTitle,
-    ELEVATE_REMEDY,
-    heldSharedText,
-    residueText,
-    UNKNOWN_ICON,
-  } from "$lib/utils/tweakPresentation";
+  import { availabilityTitle, heldSharedText, residueText } from "$lib/utils/tweakPresentation";
+  import { ELEVATE_REMEDY, UNKNOWN_ICON } from "$lib/utils/presentation";
   import AttentionNotice from "../AttentionNotice.svelte";
 
   let { tweak }: { tweak: TweakWithStatus } = $props();

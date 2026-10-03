@@ -1,4 +1,7 @@
-import { HEADING, INLINE_CODE, PROSE_LINK_UNDERLINE } from "$lib/design";
+import { INLINE_CODE } from "$lib/design/surface";
+import { PROSE_LINK_UNDERLINE } from "$lib/design/tone";
+import { HEADING } from "$lib/design/type";
+
 type ListType = "ul" | "ol";
 
 const LIST_OPEN: Record<ListType, string> = {
@@ -10,8 +13,8 @@ const NUMBERED = /^\d+\.\s+(.+)$/;
 const LINK = /\[([^\]]+)\]\(([^)]+)\)/g;
 // Only http(s) becomes a link: another scheme (javascript:, data:) would run on a click the webview handles.
 const SAFE_URL = /^https?:\/\//i;
-// Emphasis-inert (no * _ or backtick), so the emphasis pass cannot mangle a shielded URL.
-const LINK_SENTINEL = /@@LINK(\d+)@@/g;
+// `<` is escaped in the input, so typed text cannot forge it; emphasis-inert, so a shielded URL stays intact.
+const LINK_SENTINEL = /<@(\d+)>/g;
 const STRONG = '<strong class="font-semibold text-foreground">$1</strong>';
 
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -35,7 +38,7 @@ function inline(text: string): string {
     links.push(
       `<a href="${href}" rel="noopener noreferrer" class="cursor-pointer font-medium text-accent underline ${PROSE_LINK_UNDERLINE} underline-offset-2 transition-colors hover:decoration-accent">${emphasis(label)}</a>`,
     );
-    return `@@LINK${links.length - 1}@@`;
+    return `<@${links.length - 1}>`;
   });
   return emphasis(shielded).replace(LINK_SENTINEL, (_match, i: string) => links[Number(i)]);
 }

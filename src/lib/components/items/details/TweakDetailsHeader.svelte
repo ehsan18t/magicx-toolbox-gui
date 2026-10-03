@@ -3,7 +3,8 @@
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
-  import { type MetaFact, pendingFact, tweakMeta } from "$lib/utils/tweakPresentation";
+  import { pendingFact, tweakMeta } from "$lib/utils/tweakPresentation";
+  import { type MetaFact } from "$lib/utils/presentation";
   import FavoriteButton from "../FavoriteButton.svelte";
   import RestoreButton from "../RestoreButton.svelte";
   import TweakControl from "../TweakControl.svelte";

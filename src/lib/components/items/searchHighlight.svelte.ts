@@ -1,30 +1,27 @@
-import { searchStore } from "$lib/stores/search.svelte";
+import { navigationStore } from "$lib/stores/navigation.svelte";
 import { duration } from "$lib/utils/motion";
 
-/** Consumes a search "Go to" highlight once, so it cannot replay when the row mounts again elsewhere. */
+/** Takes a search "Go to" highlight as the row mounts; only the target row runs an effect. */
 export function searchHighlight(id: () => string, el: () => HTMLElement | null) {
-  let active = $state(false);
-  let frame = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const isTarget = navigationStore.takeHighlight(id());
+  let active = $state(isTarget);
 
-  $effect(() => {
-    if (searchStore.highlightId !== id()) return;
-    searchStore.setHighlight(null);
-    active = true;
-    // After a frame: rows above are still settling their height on first render.
-    frame = requestAnimationFrame(() => {
-      const row = el();
-      row?.scrollIntoView({ block: "center" });
-      row?.focus({ preventScroll: true });
+  if (isTarget) {
+    const ms = duration("highlight");
+    $effect(() => {
+      // After a frame: rows above are still settling their height on first render.
+      const frame = requestAnimationFrame(() => {
+        const row = el();
+        row?.scrollIntoView({ block: "center" });
+        row?.focus({ preventScroll: true });
+      });
+      const timer = setTimeout(() => (active = false), ms);
+      return () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(timer);
+      };
     });
-    clearTimeout(timer);
-    timer = setTimeout(() => (active = false), duration("highlight"));
-  });
-
-  $effect(() => () => {
-    cancelAnimationFrame(frame);
-    clearTimeout(timer);
-  });
+  }
 
   return {
     get active() {

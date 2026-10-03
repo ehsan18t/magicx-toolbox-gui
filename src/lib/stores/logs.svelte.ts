@@ -1,7 +1,5 @@
 import * as logsApi from "$lib/api/logs";
 import type { LogLine, LogSettings, LogTail } from "$lib/types";
-import { errorMessage } from "$lib/utils/error";
-import { logError } from "$lib/utils/logger";
 import { TOAST_DURATION, toastStore } from "./toast.svelte";
 
 export const LOGS_PANEL_ID = "logs-panel";
@@ -65,12 +63,6 @@ function append(requested: number, tail: LogTail) {
   since = tail.lines[tail.lines.length - 1].seq;
 }
 
-/** Like toastStore.failure, but the toast names the action: the bare error does not say which panel action failed. */
-function fail(action: string, error: unknown) {
-  logError(action, error);
-  toastStore.error(`${action}: ${errorMessage(error)}`);
-}
-
 async function poll(gen: number) {
   try {
     const requested = since;
@@ -85,7 +77,7 @@ async function loadSettings() {
   try {
     settings = await logsApi.getLogSettings();
   } catch (error) {
-    fail("Could not read the log settings", error);
+    toastStore.failure("Could not read the log settings", error, { withContext: true });
   }
 }
 
@@ -139,7 +131,7 @@ export const logsStore = {
     try {
       settings = await logsApi.setLogSettings(persist, detailed);
     } catch (error) {
-      fail("Could not change the log settings", error);
+      toastStore.failure("Could not change the log settings", error, { withContext: true });
       await loadSettings();
     } finally {
       isSettingsBusy = false;
@@ -153,7 +145,7 @@ export const logsStore = {
       settings = await logsApi.deleteLogs();
       toastStore.success("Logs deleted");
     } catch (error) {
-      fail("Some log files could not be deleted", error);
+      toastStore.failure("Some log files could not be deleted", error, { withContext: true });
       await loadSettings();
     } finally {
       isSettingsBusy = false;
@@ -175,7 +167,7 @@ export const logsStore = {
         },
       });
     } catch (error) {
-      fail("Could not export diagnostics", error);
+      toastStore.failure("Could not export diagnostics", error, { withContext: true });
     } finally {
       isExporting = false;
     }
@@ -185,7 +177,7 @@ export const logsStore = {
     try {
       await logsApi.openLogFolder();
     } catch (error) {
-      fail("Could not open the logs folder", error);
+      toastStore.failure("Could not open the logs folder", error, { withContext: true });
     }
   },
 };

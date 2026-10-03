@@ -1,5 +1,5 @@
-import { logError } from "$lib/utils/logger";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl } from "$lib/api/platform";
+import { toastStore } from "$lib/stores/toast.svelte";
 
 const EXTERNAL_SCHEME = /^(https?:\/\/|mailto:)/i;
 
@@ -8,5 +8,5 @@ export function openExternal(event: MouseEvent, href: string | null | undefined)
   const url = href?.trim() ?? "";
   if (!EXTERNAL_SCHEME.test(url)) return;
   event.preventDefault();
-  openUrl(url).catch((error) => logError(`Failed to open external link ${url}`, error));
+  openExternalUrl(url).catch((error) => toastStore.failure("Could not open link", error, { withContext: true }));
 }

@@ -1,8 +1,9 @@
 import { tv, type VariantProps } from "$lib/utils/cn";
 import { CHIP_QUIET_HOVER, CHIP_SOLID, CHIP_TINT, TONE_SOFT, TONE_TEXT, TONE_TINT } from "$lib/design";
 
-/** Every control dims the same when disabled: `DISABLED` through the attribute, `DIMMED` by hand. */
-export const DISABLED = "disabled:cursor-not-allowed disabled:opacity-50";
+/** Every control dims the same when disabled: `DISABLED` through either attribute, `DIMMED` by hand. */
+export const DISABLED =
+  "disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
 export const DIMMED = "opacity-50";
 /** A control busy with its own action: dimmed less, still readable. */
 export const BUSY = "cursor-wait opacity-70";

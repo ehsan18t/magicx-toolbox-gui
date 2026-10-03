@@ -3,10 +3,13 @@
 
 import * as appsApi from "$lib/api/apps";
 import type { AppOperationKind, AppStatusView, AppView } from "$lib/types";
+import { openExternalUrl } from "$lib/api/platform";
+import { isPermanent, removeConfirmMessage } from "$lib/utils/appPresentation";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { isStaleReading } from "$lib/utils/stamp";
 import { SvelteMap } from "svelte/reactivity";
+import { confirmStore } from "./confirm.svelte";
 import { settingsStore } from "./settings.svelte";
 import { toastStore } from "./toast.svelte";
 
@@ -21,6 +24,7 @@ const STORE_WATCH_CHECKS = 5;
 let apps = $state.raw<AppView[]>([]);
 let modelVersion = $state(0);
 let scanError = $state<string | null>(null);
+let loadError = $state<string | null>(null);
 const statuses = new SvelteMap<string, AppStatusView>();
 // Store-side, so a row that remounts mid-operation keeps its label and elapsed time.
 const operations = new SvelteMap<string, AppOperation>();
@@ -33,10 +37,9 @@ let scanning: Promise<void> | null = null;
 let rescan: Promise<void> | null = null;
 let focusWatched = false;
 
-// Mirrors tweaksData's stamp rule: a scan whose reads began before a removal must not undo it.
+// A scan whose reads began before a removal must not undo it.
 function adopt(view: AppStatusView): void {
-  const current = statuses.get(view.app_id);
-  if (current && view.stamp < current.stamp) return;
+  if (isStaleReading(view.stamp, statuses.get(view.app_id)?.stamp)) return;
   statuses.set(view.app_id, view);
 }
 
@@ -130,6 +133,11 @@ export const appsStore = {
     return modelVersion;
   },
 
+  /** Why the model failed to load: no app row can render. */
+  get loadError() {
+    return loadError;
+  },
+
   /** Why the last presence scan failed, for rows that have no status yet. */
   get scanError() {
     return scanError;
@@ -167,8 +175,10 @@ export const appsStore = {
       try {
         apps = await appsApi.getApps();
         modelVersion++;
+        loadError = null;
       } catch (error) {
         logError("Failed to load apps", error);
+        loadError = errorMessage(error);
         return;
       }
       await refreshStatuses();
@@ -178,8 +188,17 @@ export const appsStore = {
     return loadPromise;
   },
 
-  remove(id: string): Promise<void> {
-    return run(id, "remove", "Removed");
+  /** Asks first; the message says whether the app can be reinstalled from here. */
+  async removeWithConfirm(id: string): Promise<void> {
+    const app = appsById.get(id);
+    if (!app) return;
+    const confirmed = await confirmStore.ask({
+      title: `Remove ${app.name}?`,
+      message: removeConfirmMessage(app, isPermanent(statuses.get(id))),
+      confirmText: "Remove",
+      variant: "danger",
+    });
+    if (confirmed) await run(id, "remove", "Removed");
   },
 
   install(id: string): Promise<void> {
@@ -192,7 +211,7 @@ export const appsStore = {
     if (!productId) return;
     errors.delete(id);
     try {
-      await openUrl(`${STORE_PAGE_URL}${productId}`);
+      await openExternalUrl(`${STORE_PAGE_URL}${productId}`);
     } catch (error) {
       errors.set(id, errorMessage(error));
       return;

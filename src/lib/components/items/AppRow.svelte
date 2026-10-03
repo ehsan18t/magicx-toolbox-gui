@@ -1,7 +1,6 @@
 <script lang="ts">
   import { ActivityBar, Button, MetaItem } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
-  import { confirmStore } from "$lib/stores/confirm.svelte";
   import { appDetailsModalStore } from "$lib/stores/detailsModal.svelte";
   import type { SearchResult } from "$lib/stores/search.svelte";
   import type { AppView } from "$lib/types";
@@ -11,7 +10,7 @@
     appAction,
     appPresenceChip,
     isPermanent,
-    removeConfirmMessage,
+    PERMANENT_REMOVAL,
   } from "$lib/utils/appPresentation";
   import { expand } from "$lib/utils/motion";
   import { elapsedClock, SECOND_MS } from "$lib/utils/time";
@@ -40,7 +39,7 @@
 
   let warningOpen = $state(false);
 
-  async function handleAction() {
+  function handleAction() {
     if (!action || action.disabledReason !== null) return;
     switch (action.kind) {
       case "install":
@@ -49,16 +48,14 @@
       case "store":
         void appsStore.openStorePage(app.id);
         break;
-      case "remove": {
-        const confirmed = await confirmStore.ask({
-          title: `Remove ${app.name}?`,
-          message: removeConfirmMessage(app, permanent),
-          confirmText: "Remove",
-          variant: "danger",
-        });
-        if (confirmed) void appsStore.remove(app.id);
-      }
+      case "remove":
+        void appsStore.removeWithConfirm(app.id);
     }
+  }
+
+  function handleRowClick(e: MouseEvent) {
+    if (e.target instanceof Element && e.target.closest("button, a")) return;
+    appDetailsModalStore.open(app.id);
   }
 
   // winget reports no usable progress to a redirected script, so this shows activity and elapsed time.
@@ -82,8 +79,10 @@
   stripe={status?.presence.state === "installed" ? "accent" : null}
   error={appsStore.error(app.id)}
   ondismisserror={() => appsStore.clearError(app.id)}
+  emphasis={appDetailsModalStore.openId === app.id ? "selected" : "none"}
   {context}
   aria-busy={busy}
+  onclick={handleRowClick}
 >
   {#snippet control()}
     {#if action}
@@ -127,12 +126,7 @@
     {/if}
     {#if action?.kind === "remove"}<MetaItem {...permissionFact("Admin")} />{/if}
     {#if permanent}
-      <MetaItem
-        icon="mdi:alert"
-        label="Permanent"
-        tone="warning"
-        tooltip="No install source on this PC: once removed, it cannot be reinstalled from here"
-      />
+      <MetaItem icon="mdi:alert" label="Permanent" tone="warning" tooltip={PERMANENT_REMOVAL} />
     {/if}
   {/snippet}
 

@@ -19,21 +19,28 @@
   import { plural } from "$lib/utils/format";
   import { formatDate } from "$lib/utils/time";
   import { RISK_TONE, SYSTEM_DEFAULT_LABEL, toRiskLevel } from "$lib/utils/tweakPresentation";
-  import type { SvelteSet } from "svelte/reactivity";
   import SelectableRow from "../SelectableRow.svelte";
   import IssueList, { type Issue } from "./IssueList.svelte";
 
   interface Props {
     profile: ConfigurationProfile;
     validation: ProfileValidation;
-    /** Owned by the wizard, so the choices survive a failed apply. */
-    skipTweakIds: SvelteSet<string>;
+    skipTweakIds: ReadonlySet<string>;
+    ontoggle: (tweakId: string) => void;
     skipAlreadyApplied: boolean;
     onback: () => void;
     onapply: () => void;
   }
 
-  let { profile, validation, skipTweakIds, skipAlreadyApplied = $bindable(), onback, onapply }: Props = $props();
+  let {
+    profile,
+    validation,
+    skipTweakIds,
+    ontoggle,
+    skipAlreadyApplied = $bindable(),
+    onback,
+    onapply,
+  }: Props = $props();
 
   const meta = $derived(profile.metadata);
   const applicable = $derived(validation.preview.filter((p) => p.applicable));
@@ -47,10 +54,6 @@
   });
   const warnings = $derived(validation.warnings.map(toIssue));
   const errors = $derived(validation.errors.map(toIssue));
-
-  function toggle(tweakId: string) {
-    if (!skipTweakIds.delete(tweakId)) skipTweakIds.add(tweakId);
-  }
 </script>
 
 <ModalBody class="animate-fade-in space-y-4">
@@ -85,7 +88,7 @@
             checked={isIncluded(preview)}
             disabled={isAutoSkipped(preview)}
             label={preview.tweak_name}
-            onclick={() => toggle(preview.tweak_id)}
+            onclick={() => ontoggle(preview.tweak_id)}
           >
             <span class="flex items-center gap-2">
               <span class="truncate text-sm font-medium">{preview.tweak_name}</span>

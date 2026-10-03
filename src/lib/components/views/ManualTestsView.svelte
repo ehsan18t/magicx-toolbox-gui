@@ -16,7 +16,7 @@
 </script>
 
 <script lang="ts">
-  import { autoScroll } from "$lib/actions/autoScroll";
+  import { autoScroll } from "$lib/attachments/autoScroll";
   import { PageLayout } from "$lib/components/layout";
   import { Badge, Button, Card, CodeBlock, InlineCode, Spinner, TextField } from "$lib/components/ui";
   import { confirmStore } from "$lib/stores/confirm.svelte";

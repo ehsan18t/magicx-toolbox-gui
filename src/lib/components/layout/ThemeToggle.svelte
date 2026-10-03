@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
+  import { tooltip } from "$lib/attachments/tooltip.svelte";
   import { Icon } from "$lib/components/shared";
   import { iconButton } from "$lib/components/ui";
   import type { IconName } from "$lib/design";
@@ -35,7 +35,7 @@
 <!-- `theme-toggle` keeps its own motion while app.css freezes every other transition during a theme swap. -->
 <button
   type="button"
-  use:tooltip={label}
+  {@attach tooltip(() => label)}
   aria-label={label}
   onclick={toggleTheme}
   data-pressed={isAnimating || undefined}

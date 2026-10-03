@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
+  import { tooltip } from "$lib/attachments/tooltip.svelte";
   import { CAPTION_BUTTON } from "$lib/design";
 
   interface Props {
@@ -17,7 +17,7 @@
   ]}"
   type="button"
   aria-label={label}
-  use:tooltip={label}
+  {@attach tooltip(() => label)}
   {onclick}
 >
   <!-- 1px line glyphs on a 10px grid, drawn like the Windows 11 caption icons. -->

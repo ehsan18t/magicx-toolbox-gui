@@ -3,7 +3,7 @@
   import { Callout, Modal, ModalBody, ModalHeader } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { appDetailsModalStore } from "$lib/stores/detailsModal.svelte";
-  import { isPermanent } from "$lib/utils/appPresentation";
+  import { isPermanent, PERMANENT_REMOVAL } from "$lib/utils/appPresentation";
 
   const app = $derived(appDetailsModalStore.shownId ? appsStore.app(appDetailsModalStore.shownId) : undefined);
   const permanent = $derived(app ? isPermanent(appsStore.status(app.id)) : false);
@@ -21,9 +21,7 @@
         </Callout>
       {/if}
       {#if permanent}
-        <p class="m-0 text-sm text-foreground-muted">
-          There is no install source for this app on this PC, so removing it cannot be undone from here.
-        </p>
+        <p class="m-0 text-sm text-foreground-muted">{PERMANENT_REMOVAL}</p>
       {/if}
       {#if app.info}
         <MarkdownText content={app.info} />

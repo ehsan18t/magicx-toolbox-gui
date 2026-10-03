@@ -66,7 +66,7 @@
   {:else if tweaks.length === 0}
     <EmptyState
       {...empty}
-      action={{ label: "Browse tweaks", onclick: () => navigationStore.navigateToTab("overview") }}
+      action={{ label: "Browse tweaks", onclick: () => navigationStore.navigateToPage("overview") }}
       showIconCircle
     />
   {:else if filteredTweaks.length === 0}

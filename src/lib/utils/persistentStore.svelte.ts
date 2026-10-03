@@ -9,7 +9,7 @@ export class PersistentStore<T> {
   readonly restored: boolean = false;
 
   /** `parse` vets what was stored: undefined rejects it, and the default is written back. */
-  constructor(key: string, initialValue: T, parse: (stored: unknown) => T | undefined = (stored) => stored as T) {
+  constructor(key: string, initialValue: T, parse: (stored: unknown) => T | undefined) {
     this.#key = key;
     this.#value = initialValue;
     if (!browser) return;

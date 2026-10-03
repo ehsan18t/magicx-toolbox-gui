@@ -7,7 +7,8 @@
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
   import type { TweakWithStatus } from "$lib/types";
   import { expand, pop } from "$lib/utils/motion";
-  import { type MetaFact, pendingFact, rowDomId, tweakMeta, usesDropdown } from "$lib/utils/tweakPresentation";
+  import { pendingFact, rowDomId, tweakMeta, usesDropdown } from "$lib/utils/tweakPresentation";
+  import { type MetaFact } from "$lib/utils/presentation";
   import type { Snippet } from "svelte";
   import AttentionNotice from "./AttentionNotice.svelte";
   import FavoriteButton from "./FavoriteButton.svelte";

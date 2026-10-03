@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
+  import { tooltip } from "$lib/attachments/tooltip.svelte";
   import { Icon } from "$lib/components/shared";
   import { radioKeyIndex } from "$lib/components/ui";
   import { COLOR_SCHEMES, colorSchemeStore } from "$lib/stores/colorScheme.svelte";
@@ -37,7 +37,7 @@
         selected && "scale-110 ring-2 ring-foreground-muted",
       ]}
       style:background-color="var(--swatch-{scheme.id})"
-      use:tooltip={scheme.name}
+      {@attach tooltip(() => scheme.name)}
       aria-label={scheme.name}
     >
       {#if selected}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip as tooltipAction } from "$lib/actions/tooltip";
+  import { tooltip as withTooltip } from "$lib/attachments/tooltip.svelte";
   import { Icon } from "$lib/components/shared";
   import type { IconName } from "$lib/design";
   import { button } from "$lib/components/ui";
@@ -27,7 +27,7 @@
     class: cn("shrink-0 px-2", collapses && "@max-item-row:w-7 @max-item-row:px-0"),
   })}
   aria-label={label}
-  use:tooltipAction={tooltip}
+  {@attach withTooltip(() => tooltip)}
   {onclick}
   {...rest}
 >

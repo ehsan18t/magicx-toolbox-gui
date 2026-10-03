@@ -1,4 +1,3 @@
-import type { LogLine, LogSettings } from "$lib/types";
 import type {
   AppPresence,
   Attention,
@@ -6,6 +5,8 @@ import type {
   EntrySummary,
   HeldInfo,
   InstallRoute,
+  LogLine,
+  LogSettings,
   SystemInfo,
   TweakStateView,
   UnavailableOpt,

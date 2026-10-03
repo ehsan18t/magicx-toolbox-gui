@@ -1,7 +1,12 @@
 import { STORAGE_KEYS } from "$lib/config/app";
+import { plural } from "$lib/utils/format";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
+import { confirmStore } from "./confirm.svelte";
+import { toastStore } from "./toast.svelte";
 
-const favoritesState = new PersistentStore<readonly string[]>(STORAGE_KEYS.favorites, []);
+const favoritesState = new PersistentStore<readonly string[]>(STORAGE_KEYS.favorites, [], (stored) =>
+  Array.isArray(stored) && stored.every((id) => typeof id === "string") ? stored : undefined,
+);
 
 const ids = $derived(favoritesState.value);
 const idSet = $derived(new Set(ids));
@@ -16,14 +21,6 @@ function remove(tweakId: string) {
 
 /** Tweak ids only; the tweak data lives in tweaksStore. */
 export const favoritesStore = {
-  get count() {
-    return ids.length;
-  },
-
-  get ids(): readonly string[] {
-    return ids;
-  },
-
   isFavorite(tweakId: string): boolean {
     return idSet.has(tweakId);
   },
@@ -44,7 +41,16 @@ export const favoritesStore = {
     if (kept.length !== ids.length) favoritesState.value = kept;
   },
 
-  clear(): void {
-    favoritesState.value = [];
+  /** Clears only what the Favorites page lists, as its other actions do: hidden favorites stay. */
+  async clearWithConfirm(shownIds: readonly string[]): Promise<void> {
+    const ok = await confirmStore.ask({
+      title: "Clear favorites?",
+      message: `Remove ${plural(shownIds.length, "tweak")} from your favorites? This won't change the tweaks themselves.`,
+      confirmText: "Clear favorites",
+      variant: "danger",
+    });
+    if (!ok) return;
+    favoritesState.value = ids.filter((id) => !shownIds.includes(id));
+    toastStore.success("Favorites cleared");
   },
 };

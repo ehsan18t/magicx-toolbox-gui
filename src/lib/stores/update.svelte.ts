@@ -1,10 +1,10 @@
+import { exitApp } from "$lib/api/platform";
 import * as updateApi from "$lib/api/update";
 import { APP_CONFIG } from "$lib/config/app";
 import type { UpdateInfo } from "$lib/types";
 import { errorMessage, isAppExiting } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { HOUR_MS } from "$lib/utils/time";
-import { exit } from "@tauri-apps/plugin-process";
 import { modalStore } from "./modal.svelte";
 import { settingsStore } from "./settings.svelte";
 import { toastStore } from "./toast.svelte";
@@ -120,7 +120,7 @@ export const updateStore = {
     if (!(await installUpdate())) return;
     await new Promise((resolve) => setTimeout(resolve, EXIT_AFTER_INSTALL_MS));
     try {
-      await exit(0);
+      await exitApp();
     } catch {
       // The installer is already running, and the backend keeps refusing applies until exit.
       modalStore.close();

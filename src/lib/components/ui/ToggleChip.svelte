@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip as tooltipAction } from "$lib/actions/tooltip";
+  import { tooltip as withTooltip } from "$lib/attachments/tooltip.svelte";
   import { Icon } from "$lib/components/shared";
   import type { IconName } from "$lib/design";
   import type { Snippet } from "svelte";
@@ -21,7 +21,7 @@
 <button
   type="button"
   class={toggleChip({ size, variant, tone, class: className })}
-  use:tooltipAction={tooltip}
+  {@attach withTooltip(() => tooltip)}
   {...rest}
 >
   {#if icon}<Icon {icon} size={size === "md" ? "md" : "2xs"} class="shrink-0" />{/if}

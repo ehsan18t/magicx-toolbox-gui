@@ -1,11 +1,11 @@
 import { pendingRebootStore } from "$lib/stores/tweaksPending.svelte";
-import type { LogLine } from "$lib/types";
 import type {
   AppStatusView,
   AppView,
   Availability,
   EffectAgreement,
   EntrySummary,
+  LogLine,
   ObservedState,
   TweakEffectOption,
   TweakStatusEvent,
@@ -279,6 +279,42 @@ function plugin(cmd: string, args: Args): unknown {
   return undefined;
 }
 
+const MOCKED = [
+  "show_main_window",
+  "cancel_manual_test",
+  "install_update",
+  "reveal_last_export",
+  "open_log_folder",
+  "restart_as_admin",
+  "get_system_info",
+  "get_elevation_state",
+  "get_categories",
+  "get_tweaks",
+  "get_statuses_stream",
+  "rescan_after_elevation",
+  "get_tweak_status",
+  "apply_tweak",
+  "restore_tweak",
+  "list_snapshot_entries",
+  "discard_snapshot_entry",
+  "keep_current_state",
+  "get_apps",
+  "get_app_statuses",
+  "remove_app",
+  "install_app",
+  "get_log_tail",
+  "log_frontend",
+  "get_log_settings",
+  "delete_logs",
+  "set_log_settings",
+  "export_diagnostics",
+  "check_for_update",
+  "manual_tests_available",
+  "list_manual_tests",
+] as const;
+type MockedCommand = (typeof MOCKED)[number];
+const isMocked = (cmd: string): cmd is MockedCommand => (MOCKED as readonly string[]).includes(cmd);
+
 export function installPreview(admin: boolean): void {
   seedStatuses();
   seedApps(admin);
@@ -288,73 +324,76 @@ export function installPreview(admin: boolean): void {
     (cmd, payload) => {
       const args = (payload ?? {}) as Args;
       const id = (args.tweakId ?? args.appId) as string;
-      switch (cmd) {
-        case "show_main_window":
-        case "cancel_manual_test":
-        case "install_update":
-        case "reveal_last_export":
-        case "open_log_folder":
-          return null;
-        case "restart_as_admin":
-          location.search = "?preview";
-          return null;
-        case "get_system_info":
-          return systemInfo(admin);
-        case "get_elevation_state":
-          return { level: admin ? "Admin" : "User", sid_mismatch: false };
-        case "get_categories":
-          return categories;
-        case "get_tweaks":
-          return tweaks.map((t) => toView(t, admin));
-        case "get_statuses_stream":
-        case "rescan_after_elevation":
-          streamStatuses();
-          return null;
-        case "get_tweak_status":
-          tweakById(id);
-          return stamped(id);
-        case "apply_tweak":
-          return apply(id, args.optionLabel as string);
-        case "restore_tweak":
-          return restore(id);
-        case "list_snapshot_entries":
-          return entries.get(id) ?? [];
-        case "discard_snapshot_entry": {
-          const left = (entries.get(id) ?? []).filter((e) => e.seq !== args.seq);
-          entries.set(id, left);
-          update(id, { has_history: left.length > 0 });
-          return null;
+      if (isMocked(cmd))
+        switch (cmd) {
+          case "show_main_window":
+          case "cancel_manual_test":
+          case "install_update":
+          case "reveal_last_export":
+          case "open_log_folder":
+            return null;
+          case "restart_as_admin":
+            location.search = "?preview";
+            return null;
+          case "get_system_info":
+            return systemInfo(admin);
+          case "get_elevation_state":
+            return { level: admin ? "Admin" : "User", sid_mismatch: false };
+          case "get_categories":
+            return categories;
+          case "get_tweaks":
+            return tweaks.map((t) => toView(t, admin));
+          case "get_statuses_stream":
+          case "rescan_after_elevation":
+            streamStatuses();
+            return null;
+          case "get_tweak_status":
+            tweakById(id);
+            return stamped(id);
+          case "apply_tweak":
+            return apply(id, args.optionLabel as string);
+          case "restore_tweak":
+            return restore(id);
+          case "list_snapshot_entries":
+            return entries.get(id) ?? [];
+          case "discard_snapshot_entry": {
+            const left = (entries.get(id) ?? []).filter((e) => e.seq !== args.seq);
+            entries.set(id, left);
+            update(id, { has_history: left.length > 0 });
+            return null;
+          }
+          case "keep_current_state":
+            entries.delete(id);
+            return update(id, { attention: null, has_history: false, residues: [] });
+          case "get_apps":
+            return apps.map((a) => appView(a, admin));
+          case "get_app_statuses":
+            return wait(400).then(() => [...appStatuses.values()]);
+          case "remove_app":
+            return appOp(id, true);
+          case "install_app":
+            return appOp(id, false);
+          case "get_log_tail":
+            return { lines: logLines.filter((l) => l.seq > (args.since as number)), skipped: 0 };
+          case "log_frontend":
+            log(args.level as LogLine["level"], "ui", args.message as string);
+            return null;
+          case "get_log_settings":
+          case "delete_logs":
+            return logSettings;
+          case "set_log_settings":
+            return { ...logSettings, persist: args.persist, detailed: args.detailed };
+          case "export_diagnostics":
+            return "C:\\Users\\PreviewUser\\Desktop\\magicx-diagnostics-2026-10-02.zip";
+          case "check_for_update":
+            return wait(500).then(() => ({ available: false, currentVersion: APP_VERSION, prerelease: false }));
+          case "manual_tests_available":
+            return false;
+          case "list_manual_tests":
+            return [];
+          default:
+            return cmd satisfies never;
         }
-        case "keep_current_state":
-          entries.delete(id);
-          return update(id, { attention: null, has_history: false, residues: [] });
-        case "get_apps":
-          return apps.map((a) => appView(a, admin));
-        case "get_app_statuses":
-          return wait(400).then(() => [...appStatuses.values()]);
-        case "remove_app":
-          return appOp(id, true);
-        case "install_app":
-          return appOp(id, false);
-        case "get_log_tail":
-          return { lines: logLines.filter((l) => l.seq > (args.since as number)), skipped: 0 };
-        case "log_frontend":
-          log(args.level as LogLine["level"], "ui", args.message as string);
-          return null;
-        case "get_log_settings":
-        case "delete_logs":
-          return logSettings;
-        case "set_log_settings":
-          return { ...logSettings, persist: args.persist, detailed: args.detailed };
-        case "export_diagnostics":
-          return "C:\\Users\\PreviewUser\\Desktop\\magicx-diagnostics-2026-10-02.zip";
-        case "check_for_update":
-          return wait(500).then(() => ({ available: false, currentVersion: APP_VERSION, prerelease: false }));
-        case "manual_tests_available":
-          return false;
-        case "list_manual_tests":
-          return [];
-      }
       if (cmd.startsWith("plugin:")) {
         const result = plugin(cmd, args);
         if (result !== undefined) return result;

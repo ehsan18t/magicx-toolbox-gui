@@ -34,11 +34,6 @@
       ? `${plural(mappedResults.length, "result")} for "${searchStore.searchedQuery}"`
       : "Find tweaks and apps by name, description or details.",
   );
-
-  function goToItem({ id, categoryId }: SearchResult) {
-    searchStore.setHighlight(id);
-    navigationStore.navigateToTab(categoryId);
-  }
 </script>
 
 {#snippet location(result: MappedResult)}
@@ -48,7 +43,7 @@
     tone="accent"
     class="inline-flex items-center gap-1"
     aria-label="Go to {result.name} in {result.categoryName}"
-    onclick={() => goToItem(result.searchResult)}
+    onclick={() => navigationStore.navigateToItem(result.searchResult.categoryId, result.searchResult.id)}
   >
     Go to
     <Icon icon="mdi:arrow-right" size="2xs" />

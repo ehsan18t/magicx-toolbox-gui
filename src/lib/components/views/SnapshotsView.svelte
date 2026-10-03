@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { tweaksStore } from "$lib/stores/tweaksData.svelte";
+  import { pageTweaks } from "$lib/stores/navigation.svelte";
   import TweakCollectionView from "./TweakCollectionView.svelte";
 </script>
 
 <TweakCollectionView
   title="Snapshots"
   description="Tweaks with a saved snapshot. Each Restore steps a tweak back to the state saved before its last change."
-  tweaks={tweaksStore.withSnapshot}
+  tweaks={pageTweaks("snapshots") ?? []}
   noun="snapshots"
   countLabel="with snapshots"
   appliedLabel="currently applied"

@@ -1,4 +1,4 @@
-import { navigationStore, type TabId } from "./navigation.svelte";
+import { isPageId, navigationStore, type TabId } from "./navigation.svelte";
 import { type SearchResult, searchStore } from "./search.svelte";
 
 // Keyed by page visit, so every visit opens unfiltered and scoped with no effect to reset it.
@@ -50,7 +50,8 @@ export const pageFilterStore = {
     }
     if (!originTab) return;
     const text = searchStore.query;
-    navigationStore.navigateToTab(originTab);
+    if (isPageId(originTab)) navigationStore.navigateToPage(originTab);
+    else navigationStore.navigateToCategory(originTab);
     set(text, true);
   },
   /** Scope off, carrying typed text to the Search page and remembering this page for scopeIn. */
@@ -59,7 +60,7 @@ export const pageFilterStore = {
     set("", false);
     if (!text.trim()) return;
     searchStore.setQuery(text);
-    navigationStore.navigateToTab("search");
+    navigationStore.navigateToPage("search");
     origin = { tab: from, visit: navigationStore.visit };
   },
 };

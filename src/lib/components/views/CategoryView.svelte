@@ -6,7 +6,7 @@
   import { HEADING } from "$lib/design";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { elevationStore } from "$lib/stores/elevation.svelte";
-  import { navigationStore, type TabDefinition } from "$lib/stores/navigation.svelte";
+  import { navigationStore, pageTweaks, type TabDefinition } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { plural } from "$lib/utils/format";
@@ -19,7 +19,7 @@
 
   let attentionOnly = $state(navigationStore.takeAttentionFilter());
 
-  const categoryTweaks = $derived(tweaksStore.byCategory[tab.id] ?? []);
+  const categoryTweaks = $derived(pageTweaks(tab.id) ?? []);
   const stats = $derived(tallies(categoryTweaks));
   const restorable = $derived(categoryTweaks.filter(canRestore));
 
@@ -75,6 +75,13 @@
       <Button variant="primary" loading={elevationStore.isRestarting} onclick={elevationStore.restartAsAdmin}>
         Restart as admin
       </Button>
+    </Callout>
+  {/if}
+
+  {#if appsStore.loadError}
+    <Callout tone="error" icon="mdi:alert-circle" role="alert" class="flex-wrap items-center gap-y-2">
+      <p class="m-0 min-w-0 flex-1 text-ui">Removable apps could not be loaded. {appsStore.loadError}</p>
+      <Button onclick={() => appsStore.load()}>Retry</Button>
     </Callout>
   {/if}
 

@@ -22,7 +22,6 @@ export {
   TONE_TINT,
   TONE_WASH,
   type TextTone,
-  type TintTone,
   type Tone,
 } from "./tone";
 export { HEADING } from "./type";

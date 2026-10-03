@@ -11,18 +11,72 @@
     warning: "mdi:alert",
     info: "mdi:information",
   };
+
+  let region = $state<HTMLElement>();
+  let hovered = false;
+  let focused = $state(false);
+  let returnFocus: HTMLElement | null = null;
+
+  // A removed element fires no focusout.
+  $effect(() => {
+    void toastStore.list;
+    if (focused && !region?.contains(document.activeElement)) release();
+  });
+
+  const toastEl = (id: string) => region?.querySelector<HTMLElement>(`[data-toast-id="${id}"]`);
+
+  function setHovered(next: boolean) {
+    hovered = next;
+    toastStore.setPaused(hovered || focused);
+  }
+
+  function release() {
+    focused = false;
+    toastStore.hold(null);
+    toastStore.setPaused(hovered);
+  }
+
+  function onfocusin(e: FocusEvent) {
+    if (!focused && e.relatedTarget instanceof HTMLElement && !region?.contains(e.relatedTarget)) {
+      returnFocus = e.relatedTarget;
+    }
+    focused = true;
+    toastStore.setPaused(true);
+    toastStore.hold((e.target as Element).closest<HTMLElement>("[data-toast-id]")?.dataset.toastId ?? null);
+  }
+
+  function onfocusout(e: FocusEvent) {
+    if (!(e.relatedTarget instanceof Node && region?.contains(e.relatedTarget))) release();
+  }
+
+  /** Focus goes to a neighbouring toast, else back to where it came from, before the toast animates out. */
+  function dismiss(id: string) {
+    if (toastEl(id)?.contains(document.activeElement)) {
+      const list = toastStore.list;
+      const i = list.findIndex((t) => t.id === id);
+      const next = list[i + 1] ?? list[i - 1];
+      const target = next ? toastEl(next.id)?.querySelector<HTMLElement>("[data-toast-dismiss]") : returnFocus;
+      if (target?.isConnected) target.focus();
+      else (document.activeElement as HTMLElement | null)?.blur();
+    }
+    toastStore.dismiss(id);
+  }
 </script>
 
-<!-- Always mounted: a live region must exist before its content arrives, and the last toast still animates out.
-     The only live region: a role on each toast would nest a second one. -->
+<!-- Announced through the live regions below, which hold only the newest toast's text. -->
 <div
+  bind:this={region}
   class="fixed top-toast-offset right-4 z-toast flex flex-col gap-2"
   role="region"
   aria-label="Notifications"
-  aria-live="polite"
+  onpointerenter={() => setHovered(true)}
+  onpointerleave={() => setHovered(false)}
+  {onfocusin}
+  {onfocusout}
 >
   {#each toastStore.list as toast (toast.id)}
     <div
+      data-toast-id={toast.id}
       class={card({
         elevation: "flyout",
         class: "relative flex w-toast items-start gap-3 overflow-hidden py-3 pr-2 pl-4",
@@ -45,7 +99,7 @@
             class="mt-1.5 text-sm"
             onclick={() => {
               action.run();
-              toastStore.dismiss(toast.id);
+              dismiss(toast.id);
             }}
           >
             {action.label}
@@ -56,8 +110,19 @@
         icon="mdi:close"
         size="xs"
         label="Dismiss notification"
-        onclick={() => toastStore.dismiss(toast.id)}
+        data-toast-dismiss
+        onclick={() => dismiss(toast.id)}
       />
     </div>
   {/each}
 </div>
+
+<!-- Always mounted: a live region must exist before its content arrives. Errors interrupt; the rest wait. -->
+{#each [true, false] as assertive (assertive)}
+  {@const current = toastStore.announcement?.assertive === assertive ? toastStore.announcement : null}
+  <div class="sr-only" role={assertive ? "alert" : "status"} aria-live={assertive ? "assertive" : "polite"}>
+    {#if current}
+      {#key current.id}<p>{current.text}</p>{/key}
+    {/if}
+  </div>
+{/each}

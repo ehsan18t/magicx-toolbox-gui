@@ -1,12 +1,7 @@
 <script lang="ts" module>
   import type { TweakStatus } from "$lib/types";
-  import {
-    CHECKING,
-    labelsOf,
-    SYSTEM_DEFAULT_LABEL,
-    unavailableReason,
-    usesDropdown,
-  } from "$lib/utils/tweakPresentation";
+  import { labelsOf, SYSTEM_DEFAULT_LABEL, unavailableReason, usesDropdown } from "$lib/utils/tweakPresentation";
+  import { CHECKING } from "$lib/utils/presentation";
 
   // ADR-0003: System Default joins a control only beside a lone option, where choosing it restores
   // the snapshot; elsewhere the state line names it and Restore is the way back.
@@ -20,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
+  import { tooltip } from "$lib/attachments/tooltip.svelte";
   import { SegmentedSwitch, type SegmentOption, Select } from "$lib/components/ui";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
@@ -83,7 +78,7 @@
   }
 </script>
 
-<div class={cn("min-w-0", dropdown && "w-fit min-w-44", className)} use:tooltip={disabledReason}>
+<div class={cn("min-w-0", dropdown && "w-fit min-w-44", className)} {@attach tooltip(() => disabledReason)}>
   {#if dropdown}
     <Select
       value={selected}
@@ -92,6 +87,7 @@
       pending={hasPending}
       loading={isLoading}
       {disabled}
+      {disabledReason}
       label={def.name}
       onchange={choose}
     />
@@ -102,6 +98,7 @@
       pending={hasPending}
       loading={isLoading}
       {disabled}
+      {disabledReason}
       label={def.name}
       onchange={choose}
     />

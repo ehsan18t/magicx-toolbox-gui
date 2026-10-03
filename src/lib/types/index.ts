@@ -199,35 +199,39 @@ export interface AttentionItem {
 }
 
 /** `code` of a failed apply or restore (`Error::TweakFailed`), beside its unchanged `message`. */
-export type TweakFailureCode =
-  | "TWEAK_ACCESS_DENIED"
-  | "TWEAK_NOT_FOUND"
-  | "TWEAK_BUSY"
-  | "TWEAK_ELEVATION_UNAVAILABLE"
-  | "TWEAK_OUTCOME_UNKNOWN"
-  | "TWEAK_VERIFY_MISMATCH"
-  | "TWEAK_ENGINE_ERROR";
+export const TWEAK_FAILURE_CODES = [
+  "TWEAK_ACCESS_DENIED",
+  "TWEAK_NOT_FOUND",
+  "TWEAK_BUSY",
+  "TWEAK_ELEVATION_UNAVAILABLE",
+  "TWEAK_OUTCOME_UNKNOWN",
+  "TWEAK_VERIFY_MISMATCH",
+  "TWEAK_ENGINE_ERROR",
+] as const;
+export type TweakFailureCode = (typeof TWEAK_FAILURE_CODES)[number];
 
 /** `code` of every backend `Error` (src-tauri/src/error.rs). */
-export type BackendErrorCode =
-  | TweakFailureCode
-  | "APP_EXITING"
-  | "APP_FAILED"
-  | "APP_UNAVAILABLE"
-  | "APPLY_IN_FLIGHT"
-  | "BACKUP_FAILED"
-  | "COMMAND_EXECUTION_FAILED"
-  | "NOT_FOUND"
-  | "REGISTRY_ACCESS_DENIED"
-  | "REGISTRY_KEY_NOT_FOUND"
-  | "REGISTRY_OPERATION_FAILED"
-  | "REQUIRES_ADMIN"
-  | "SERVICE_CONTROL_FAILED"
-  | "TAURI_ERROR"
-  | "TWEAK_UNAVAILABLE"
-  | "UPDATE_ERROR"
-  | "VALIDATION_FAILED"
-  | "WINDOWS_API_ERROR";
+export const BACKEND_ERROR_CODES = [
+  ...TWEAK_FAILURE_CODES,
+  "APP_EXITING",
+  "APP_FAILED",
+  "APP_UNAVAILABLE",
+  "APPLY_IN_FLIGHT",
+  "BACKUP_FAILED",
+  "COMMAND_EXECUTION_FAILED",
+  "NOT_FOUND",
+  "REGISTRY_ACCESS_DENIED",
+  "REGISTRY_KEY_NOT_FOUND",
+  "REGISTRY_OPERATION_FAILED",
+  "REQUIRES_ADMIN",
+  "SERVICE_CONTROL_FAILED",
+  "TAURI_ERROR",
+  "TWEAK_UNAVAILABLE",
+  "UPDATE_ERROR",
+  "VALIDATION_FAILED",
+  "WINDOWS_API_ERROR",
+] as const;
+export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
 
 /** Kept per tweak, not per snapshot entry, so releasing an entry cannot drop it (ADR-0001/0002). */
 export type AttentionReason =

@@ -25,7 +25,7 @@
         <button
           type="button"
           class={rowButton({ class: ["group flex w-fit max-w-full items-center gap-2 px-1.5 py-1", HEADING.item] })}
-          onclick={() => navigationStore.navigateToTab(categoryId)}
+          onclick={() => navigationStore.navigateToCategory(categoryId)}
         >
           <Icon icon={categoriesStore.icon(categoryId)} size="md" class="shrink-0 text-foreground-muted" />
           <span class="truncate">{categoriesStore.name(categoryId)}</span>

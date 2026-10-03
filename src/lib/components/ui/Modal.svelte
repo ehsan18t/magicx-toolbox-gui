@@ -63,10 +63,10 @@
     return () => void openStack.splice(openStack.indexOf(stackToken), 1);
   });
 
+  // Keeps aria-disabled controls: they stay focusable to announce why they are blocked.
   function getFocusableElements(root: HTMLElement): HTMLElement[] {
     return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => {
       if (el.hasAttribute("disabled")) return false;
-      if (el.getAttribute("aria-disabled") === "true") return false;
       if (el.closest("[inert]")) return false;
       return el.offsetParent !== null || el === document.activeElement;
     });
@@ -76,17 +76,16 @@
     if (!modalEl) return;
     await tick();
 
-    (getFocusableElements(modalEl)[0] ?? modalEl).focus();
+    const focusables = getFocusableElements(modalEl);
+    (focusables.find((el) => el.getAttribute("aria-disabled") !== "true") ?? focusables[0] ?? modalEl).focus();
   }
 
   $effect(() => {
-    if (open && !isVisible && !isClosing) isVisible = true;
-    else if (!open && isVisible && !isClosing) isClosing = true;
-  });
-
-  $effect(() => {
-    if (!open) return;
-    previouslyFocusedEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (open && !isVisible && !isClosing) {
+      // Kept through a reopen during the exit animation, when focus is still inside the closing panel.
+      previouslyFocusedEl ??= document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      isVisible = true;
+    } else if (!open && isVisible && !isClosing) isClosing = true;
   });
 
   $effect(() => {

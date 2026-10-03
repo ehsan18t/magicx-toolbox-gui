@@ -3,21 +3,21 @@
 </script>
 
 <script lang="ts">
-  import { textIfCut, tooltip } from "$lib/actions/tooltip";
+  import { textIfCut, tooltip } from "$lib/attachments/tooltip.svelte";
   import { type IconName, type TextTone, TONE_TEXT } from "$lib/design";
   import { PageLayout } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
-  import { Card, IconButton, Meter, rowButton, SectionCard, Skeleton } from "$lib/components/ui";
+  import { Button, Callout, Card, IconButton, Meter, rowButton, SectionCard, Skeleton } from "$lib/components/ui";
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { systemStore } from "$lib/stores/system.svelte";
   import { categoriesStore, tweaksStore } from "$lib/stores/tweaksData.svelte";
   import { pendingChangesStore } from "$lib/stores/tweaksPending.svelte";
-  import { isComplete } from "$lib/utils/categoryStats";
   import { SEP } from "$lib/utils/format";
   import { formatDate } from "$lib/utils/time";
   import { systemInfoRows, type HardwareRow } from "$lib/utils/systemInfoRows";
-  import { CHECKING, tallies } from "$lib/utils/tweakPresentation";
+  import { CHECKING } from "$lib/utils/presentation";
+  import { isComplete, tallies } from "$lib/utils/tweakPresentation";
 
   interface Tile {
     label: string;
@@ -67,7 +67,7 @@
       sub: "restorable",
       icon: "mdi:history",
       tone: "neutral",
-      onclick: () => navigationStore.navigateToTab("snapshots"),
+      onclick: () => navigationStore.navigateToPage("snapshots"),
     },
     {
       label: "Ready to apply",
@@ -77,9 +77,6 @@
       tone: pendingChangesStore.count ? "warning" : "neutral",
     },
   ]);
-
-  // The store logs the failure.
-  const refresh = () => systemStore.refresh().catch(() => {});
 </script>
 
 {#snippet pcList(list: HardwareRow[], columns: boolean)}
@@ -115,7 +112,7 @@
         </span>
         <span class="mt-1 flex w-full min-w-0 items-baseline gap-1.5">
           <span class="font-display text-xl leading-none font-semibold tabular-nums">{t.value}</span>
-          <span class="truncate text-xs text-foreground-muted" use:tooltip={textIfCut(t.sub)}>{t.sub}</span>
+          <span class="truncate text-xs text-foreground-muted" {@attach tooltip(() => textIfCut(t.sub))}>{t.sub}</span>
         </span>
         {#if t.meter}
           <Meter {...t.meter} label={t.label} class="mt-2 w-full" />
@@ -150,7 +147,7 @@
                 onclick={() =>
                   s.attention
                     ? navigationStore.navigateToAttention(category.id)
-                    : navigationStore.navigateToTab(category.id)}
+                    : navigationStore.navigateToCategory(category.id)}
                 aria-label="{category.name}: {s.applied} of {s.total} applied{s.attention
                   ? `, ${s.attention} need attention`
                   : ''}"
@@ -185,17 +182,24 @@
               : "Refresh system info"}
             loading={systemStore.isRefreshing}
             disabled={systemLoading}
-            onclick={refresh}
+            onclick={() => systemStore.refresh()}
           />
         {/snippet}
-        {#if systemLoading || !rows}
+        {#if rows && !systemLoading}
+          {@render pcList(rows.summary, false)}
+        {:else if systemStore.loadError && !systemLoading}
+          <Callout tone="error" icon="mdi:alert-circle" role="alert" class="m-3">
+            <div class="min-w-0 flex-1">
+              <p class="m-0 text-ui">Could not read this PC's details. {systemStore.loadError}</p>
+              <Button size="sm" icon="mdi:refresh" class="mt-2" onclick={() => systemStore.load()}>Retry</Button>
+            </div>
+          </Callout>
+        {:else}
           <div class="space-y-2 p-3">
             {#each SKELETON_WIDTHS as width (width)}
               <Skeleton class="h-4" style="width: {width}%" />
             {/each}
           </div>
-        {:else}
-          {@render pcList(rows.summary, false)}
         {/if}
       </SectionCard>
     </div>

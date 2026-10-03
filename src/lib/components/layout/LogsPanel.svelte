@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { autoScroll } from "$lib/actions/autoScroll";
+  import { autoScroll } from "$lib/attachments/autoScroll";
   import { Icon } from "$lib/components/shared";
   import { Badge, IconButton, SearchInput, Select, type SelectOption } from "$lib/components/ui";
   import { HEADING, type TextTone, TONE_TEXT } from "$lib/design";

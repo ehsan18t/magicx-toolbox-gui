@@ -3,13 +3,10 @@
   import { navigationStore } from "$lib/stores/navigation.svelte";
   import { pageFilterStore } from "$lib/stores/pageFilter.svelte";
   import { searchStore } from "$lib/stores/search.svelte";
-  import { tick } from "svelte";
 
   let searchEl = $state<HTMLInputElement | null>(null);
 
-  $effect(() => {
-    if (navigationStore.focusSearchSignal > 0) tick().then(() => searchEl?.focus());
-  });
+  $effect(() => navigationStore.registerSearchFocus(() => searchEl?.focus()));
 
   const scoped = $derived(pageFilterStore.isScoped);
   const chipTab = $derived(pageFilterStore.chipTab);
@@ -20,7 +17,7 @@
     else if (navigationStore.isScopable) pageFilterStore.searchEverywhere(value);
     else {
       searchStore.setQuery(value);
-      if (value && navigationStore.activeTab !== "search") navigationStore.navigateToTab("search");
+      if (value && navigationStore.activeTab !== "search") navigationStore.navigateToPage("search");
     }
   }
 

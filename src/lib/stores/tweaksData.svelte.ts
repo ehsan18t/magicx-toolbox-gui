@@ -13,6 +13,7 @@ import type {
   TweakWithStatus,
 } from "$lib/types";
 import { logError } from "$lib/utils/logger";
+import { isStaleReading } from "$lib/utils/stamp";
 import { tallies, toRiskLevel } from "$lib/utils/tweakPresentation";
 import { favoritesStore } from "./favorites.svelte";
 import { settingsStore } from "./settings.svelte";
@@ -93,7 +94,7 @@ function adoptStatusViews(views: Iterable<[string, TweakStatusView]>) {
   const fresh: Record<string, TweakStatusView> = {};
   let adopted = false;
   for (const [tweakId, view] of views) {
-    if (view.stamp < (statusStamps[tweakId] ?? 0)) continue;
+    if (isStaleReading(view.stamp, statusStamps[tweakId])) continue;
     statusStamps[tweakId] = view.stamp;
     if (tweaksById.has(tweakId)) {
       fresh[tweakId] = view;

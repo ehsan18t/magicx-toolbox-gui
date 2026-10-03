@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip as tooltipAction } from "$lib/actions/tooltip";
+  import { tooltip as withTooltip } from "$lib/attachments/tooltip.svelte";
   import { openExternal } from "$lib/utils/externalLink";
   import type { Snippet } from "svelte";
   import type { HTMLAnchorAttributes } from "svelte/elements";
@@ -22,7 +22,7 @@
   class={variant ? link({ variant, tone, class: className }) : className}
   {...rest}
   onclick={(event) => openExternal(event, href)}
-  use:tooltipAction={tooltip}
+  {@attach withTooltip(() => tooltip)}
 >
   {@render children()}
 </a>

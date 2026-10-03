@@ -17,7 +17,7 @@
     {
       label: "Settings",
       icon: "mdi:cog-outline",
-      open: () => navigationStore.navigateToTab("settings"),
+      open: () => navigationStore.navigateToPage("settings"),
       dot: false,
       active: navigationStore.activeTab === "settings",
     },

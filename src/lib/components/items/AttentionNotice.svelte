@@ -14,7 +14,8 @@
   import { elevationStore } from "$lib/stores/elevation.svelte";
   import { tweakActionsStore } from "$lib/stores/tweakActions.svelte";
   import type { AttentionItem, TweakWithStatus } from "$lib/types";
-  import { attentionCause, ELEVATE_REMEDY, ensureSentence } from "$lib/utils/tweakPresentation";
+  import { attentionCause, ensureSentence } from "$lib/utils/tweakPresentation";
+  import { ELEVATE_REMEDY } from "$lib/utils/presentation";
   import RestoreButton from "./RestoreButton.svelte";
 
   interface Props {

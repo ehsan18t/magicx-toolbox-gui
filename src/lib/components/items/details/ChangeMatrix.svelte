@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
+  import { tooltip } from "$lib/attachments/tooltip.svelte";
   import { Icon } from "$lib/components/shared";
   import { COLUMN_TINT, TABLE_HEAD } from "$lib/design";
   import { PanelSection } from "$lib/components/ui";
@@ -34,7 +34,7 @@
     </span>
     {#if cell.note}<span class="ml-1 text-caption text-foreground-subtle">{cell.note}</span>{/if}
   {:else}
-    <span class="text-foreground-subtle" use:tooltip={"Left as it is by this option"}>–</span>
+    <span class="text-foreground-subtle" {@attach tooltip(() => "Left as it is by this option")}>–</span>
   {/if}
 {/snippet}
 
@@ -67,7 +67,7 @@
                 {:else if tone === "pending"}
                   <span class="block text-caption font-medium text-warning">Pending</span>
                 {:else if unavailable}
-                  <span class="block text-caption font-normal text-warning" use:tooltip={unavailable.reason}>
+                  <span class="block text-caption font-normal text-warning" {@attach tooltip(() => unavailable.reason)}>
                     Unavailable here
                   </span>
                 {/if}
@@ -99,7 +99,7 @@
                 </span>
                 <span
                   class="mt-0.5 block truncate font-mono text-caption text-foreground-muted"
-                  use:tooltip={row.location}
+                  {@attach tooltip(() => row.location)}
                 >
                   {row.location}
                 </span>

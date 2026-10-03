@@ -1,8 +1,10 @@
 import * as systemApi from "$lib/api/system";
 import { STORAGE_KEYS } from "$lib/config/app";
 import type { CachedSystemInfo, SystemInfo, WindowsInfo } from "$lib/types";
+import { errorMessage } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
+import { toastStore } from "./toast.svelte";
 
 /** Stands in for the dynamic fields when only the cached hardware could be read. */
 const UNKNOWN_WINDOWS: WindowsInfo = {
@@ -16,12 +18,28 @@ const UNKNOWN_WINDOWS: WindowsInfo = {
   install_date: null,
 };
 
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+
+/** The shape systemInfoRows destructures: a cache from an older build would otherwise crash the render. */
+function parseCache(stored: unknown): CachedSystemInfo | null | undefined {
+  if (stored === null) return null;
+  if (!isObject(stored) || !isObject(stored.hardware) || !isObject(stored.device)) return undefined;
+  const { cpu, memory, motherboard, gpu, monitors, disks, network } = stored.hardware;
+  const valid =
+    typeof stored.computer_name === "string" &&
+    typeof stored.cachedAt === "string" &&
+    [cpu, memory, motherboard].every(isObject) &&
+    [gpu, monitors, disks, network].every(Array.isArray);
+  return valid ? (stored as CachedSystemInfo) : undefined;
+}
+
 // Hardware rarely changes, so it is cached across launches.
-const cache = new PersistentStore<CachedSystemInfo | null>(STORAGE_KEYS.systemInfoCache, null);
+const cache = new PersistentStore<CachedSystemInfo | null>(STORAGE_KEYS.systemInfoCache, null, parseCache);
 
 let info = $state<SystemInfo | null>(null);
 let isLoading = $state(true);
 let isRefreshing = $state(false);
+let loadError = $state<string | null>(null);
 
 const cachedAt = $derived(cache.value?.cachedAt ?? null);
 
@@ -59,6 +77,11 @@ export const systemStore = {
     return isRefreshing;
   },
 
+  /** Why the first load failed with nothing cached to fall back on. */
+  get loadError() {
+    return loadError;
+  },
+
   /** ISO timestamp of when hardware info was last cached. */
   get cachedAt() {
     return cachedAt;
@@ -67,6 +90,7 @@ export const systemStore = {
   /** Fresh dynamic info over the cached hardware; everything fresh when nothing is cached. */
   async load() {
     isLoading = true;
+    loadError = null;
     try {
       const cached = cache.value;
       const fresh = await systemApi.getSystemInfo();
@@ -79,7 +103,10 @@ export const systemStore = {
       return info;
     } catch (error) {
       logError("Failed to load system info", error);
-      if (!cache.value) return null;
+      if (!cache.value) {
+        loadError = errorMessage(error);
+        return null;
+      }
       info = withCachedHardware(cache.value);
       return info;
     } finally {
@@ -87,17 +114,18 @@ export const systemStore = {
     }
   },
 
-  /** Re-reads everything, hardware included. */
+  /** Re-reads everything, hardware included; a failure is toasted and keeps what is shown. */
   async refresh() {
     isRefreshing = true;
     try {
       const fresh = await systemApi.getSystemInfo();
       info = fresh;
+      loadError = null;
       updateCache(fresh);
       return fresh;
     } catch (error) {
-      logError("Failed to refresh system info", error);
-      throw error;
+      toastStore.failure("Could not refresh system info", error, { withContext: true });
+      return null;
     } finally {
       isRefreshing = false;
     }

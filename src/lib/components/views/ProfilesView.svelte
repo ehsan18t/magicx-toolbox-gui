@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-  import { tooltip } from "$lib/actions/tooltip";
+  import { tooltip } from "$lib/attachments/tooltip.svelte";
   import { DROP_VEIL, HEADING, TONE_WASH } from "$lib/design";
   import { PageLayout, PageStats } from "$lib/components/layout";
   import { Icon } from "$lib/components/shared";
@@ -36,13 +36,11 @@
 
     deletingProfile = name;
     if (await profileStore.deleteProfile(name)) toastStore.success(`Profile "${name}" deleted`);
-    else toastStore.error(profileStore.deleteError ?? "Could not delete the profile");
     deletingProfile = null;
   }
 
   async function openImport(importing: Promise<boolean>) {
     if (await importing) modalStore.open("profileImport");
-    else if (profileStore.importError) toastStore.error(profileStore.importError);
   }
 
   async function handleOpenFolder() {
@@ -80,7 +78,7 @@
       {#if currentProfileDir}
         <p
           class="m-0 flex min-w-0 flex-1 items-center gap-1.5 text-xs text-foreground-muted"
-          use:tooltip={currentProfileDir}
+          {@attach tooltip(() => currentProfileDir)}
         >
           <Icon icon="mdi:folder-open" size="xs" class="shrink-0" />
           <span class="truncate font-mono">{currentProfileDir}</span>

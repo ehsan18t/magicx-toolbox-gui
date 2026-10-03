@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* An aria-disabled control (focusable, with its reason) reacts no more than a natively disabled one. */
+@custom-variant enabled (&:enabled:not([aria-disabled="true"]));
+
 @layer base {
   /* Navy neutrals; dark is the default theme. Layers lighten upward: base, content, card. */
   :root,

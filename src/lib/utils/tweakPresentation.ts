@@ -1,4 +1,4 @@
-import type { IconName, TextTone, Tone } from "$lib/design";
+import type { Tone } from "$lib/design";
 import type {
   Attention,
   Availability,
@@ -10,25 +10,10 @@ import type {
   TweakStatus,
   TweakWithStatus,
 } from "$lib/types";
-import { capitalize, plural } from "$lib/utils/format";
+import { plural } from "$lib/utils/format";
+import { CHECKING, ELEVATE_HINT, type MetaFact, UNKNOWN_ICON, UNKNOWN_NEEDS_ADMIN } from "./presentation";
 
 export const SYSTEM_DEFAULT_LABEL = "System default";
-
-/** One fact on an item's meta line: MetaItem's props. */
-export interface MetaFact {
-  icon: IconName;
-  label: string;
-  tone?: TextTone;
-  tooltip?: string;
-  spin?: boolean;
-}
-
-export const CHECKING: MetaFact = { label: "Checking…", icon: "mdi:loading", tone: "neutral", spin: true };
-export const UNKNOWN_ICON = "mdi:help-circle-outline";
-export const UNKNOWN_NEEDS_ADMIN = "Unknown, needs admin";
-/** The remedy when only elevation can read or change something, as a clause; ELEVATE_HINT is the sentence. */
-export const ELEVATE_REMEDY = "restart as administrator to resolve";
-export const ELEVATE_HINT = `${capitalize(ELEVATE_REMEDY)}.`;
 
 const RISK_LEVEL: Record<BackendRiskLevel, RiskLevel> = {
   Low: "low",
@@ -130,6 +115,10 @@ export interface Tallies {
   needsAdmin: number;
   byState: Record<TweakStatus["state"], number>;
 }
+
+/** Every tweak applied; an empty category never counts as complete. */
+export const isComplete = ({ applied, total }: Pick<Tallies, "applied" | "total">): boolean =>
+  total > 0 && applied === total;
 
 /** Every count a page or panel shows, in one pass. */
 export function tallies(list: TweakWithStatus[]): Tallies {

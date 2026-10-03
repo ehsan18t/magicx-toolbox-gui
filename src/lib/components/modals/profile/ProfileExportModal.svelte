@@ -73,8 +73,6 @@
     if (exported) {
       toastStore.success(`Exported profile "${trimmed}"`);
       modalStore.close();
-    } else if (profileStore.exportError) {
-      toastStore.error(profileStore.exportError);
     }
   }
 </script>

@@ -1,14 +1,18 @@
 <script lang="ts" module>
-  const MENU_GAP = 4;
-  const VIEWPORT_GUTTER = 8;
+  import type { FlyoutPlacement } from "$lib/utils/flyout";
+
+  const PLACEMENT: FlyoutPlacement = { side: "below", align: "start", gap: 4, inset: 8 };
 </script>
 
 <script lang="ts" generics="T extends string | number">
   import { Icon } from "$lib/components/shared";
   import { cn } from "$lib/utils/cn";
+  import { placeFlyout } from "$lib/utils/flyout";
   import { pop } from "$lib/utils/motion";
   import { tick } from "svelte";
   import { PENDING_TINT } from "$lib/design";
+  import DisabledReason from "./DisabledReason.svelte";
+  import { blockedReason, reasonAttrs } from "./disabledReason";
   import { nextEnabledIndex } from "./listNav";
   import Spinner from "./Spinner.svelte";
   import type { SelectOption } from "./types";
@@ -22,6 +26,8 @@
     pending?: boolean;
     loading?: boolean;
     disabled?: boolean;
+    /** Why it is disabled: keeps the trigger focusable and describes it. */
+    disabledReason?: string | null;
     class?: string;
     onchange?: (value: T) => void;
   }
@@ -34,12 +40,14 @@
     pending = false,
     loading = false,
     disabled = false,
+    disabledReason,
     class: className,
     onchange,
   }: Props = $props();
 
   const id = $props.id();
   const listboxId = `${id}-listbox`;
+  const reasonId = `${id}-reason`;
   // Index, not value: labels carry spaces and colons, which break the id reference.
   const optionId = (i: number) => `${id}-option-${i}`;
 
@@ -49,6 +57,7 @@
   let highlightedIndex = $state(-1);
   let menuPosition = $state({ top: 0, left: 0, minWidth: 0, maxWidth: 0, above: false });
 
+  const reason = $derived(blockedReason(disabled, loading, disabledReason));
   const selectedOption = $derived(options.find((o) => o.value === value));
   const displayLabel = $derived(selectedOption?.label ?? placeholder);
   const highlightedOptionId = $derived(
@@ -59,20 +68,16 @@
     if (!triggerEl) return;
     const rect = triggerEl.getBoundingClientRect();
 
-    const maxWidth = window.innerWidth - VIEWPORT_GUTTER * 2;
-    const below = rect.bottom + MENU_GAP;
+    const maxWidth = window.innerWidth - PLACEMENT.inset * 2;
+    const below = rect.bottom + PLACEMENT.gap;
     menuPosition = { top: below, left: rect.left, minWidth: Math.min(rect.width, maxWidth), maxWidth, above: false };
 
     await tick();
     if (!menuEl) return;
     // Offset size, not the bounding rect: the opening pop scales the menu.
-    const height = menuEl.offsetHeight;
-    const width = menuEl.offsetWidth;
-    const above =
-      below + height > window.innerHeight - VIEWPORT_GUTTER && rect.top - height - MENU_GAP > VIEWPORT_GUTTER;
-    const top = above ? rect.top - height - MENU_GAP : below;
-    const left = Math.max(VIEWPORT_GUTTER, Math.min(rect.left, window.innerWidth - VIEWPORT_GUTTER - width));
-    menuPosition = { ...menuPosition, top, left, above };
+    const size = { width: menuEl.offsetWidth, height: menuEl.offsetHeight };
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    menuPosition = { ...menuPosition, ...placeFlyout(rect, size, viewport, PLACEMENT) };
   }
 
   async function open() {
@@ -168,19 +173,15 @@
       const now = triggerEl?.getBoundingClientRect();
       if (now?.top !== anchor.top || now.left !== anchor.left) close();
     };
-    const scrollers: EventTarget[] = [window];
-    for (let el = triggerEl.parentElement; el; el = el.parentElement) {
-      const style = getComputedStyle(el);
-      if (/(auto|scroll)/.test(style.overflow + style.overflowY + style.overflowX)) scrollers.push(el);
-    }
 
+    // Capture: scroll does not bubble, so this sees every scroller, the menu's own included (it moves no trigger).
     window.addEventListener("click", onClick);
     window.addEventListener("resize", close);
-    for (const el of scrollers) el.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
     return () => {
       window.removeEventListener("click", onClick);
       window.removeEventListener("resize", close);
-      for (const el of scrollers) el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", onScroll, { capture: true });
     };
   });
 </script>
@@ -192,7 +193,8 @@
     role="combobox"
     onclick={toggle}
     onkeydown={handleKeydown}
-    disabled={disabled || loading}
+    disabled={(disabled && !reason) || loading}
+    {...reasonAttrs(reason, reasonId)}
     aria-label="{label}: {displayLabel}"
     aria-haspopup="listbox"
     aria-expanded={isOpen}
@@ -224,6 +226,7 @@
         />
       {/if}
     </span>
+    <DisabledReason id={reasonId} {reason} />
   </button>
 </div>
 
