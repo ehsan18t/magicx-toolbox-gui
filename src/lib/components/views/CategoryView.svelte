@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { NoMatches, PageLayout } from "$lib/components/layout";
+  import { AppliedMeter, NoMatches, PageLayout } from "$lib/components/layout";
   import { AppRow, RestoreAllButton, TweakRow } from "$lib/components/items";
-  import { AppliedMeter } from "$lib/components/tweaks";
   import { Button, Callout, EmptyState, SkeletonList, ToggleChip } from "$lib/components/ui";
   import { appsStore } from "$lib/stores/apps.svelte";
   import { elevationStore } from "$lib/stores/elevation.svelte";

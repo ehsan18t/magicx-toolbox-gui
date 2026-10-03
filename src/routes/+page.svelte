@@ -1,8 +1,7 @@
 <script lang="ts">
   import { LoadError, PendingBar, RebootBanner } from "$lib/components/feedback";
-  import { LogsPanel, Sidebar } from "$lib/components/layout";
+  import { LogsPanel, Sidebar, SummaryPanel } from "$lib/components/layout";
   import { AppDetailsModal, TweakDetailsModal } from "$lib/components/items";
-  import { SummaryPanel } from "$lib/components/tweaks";
   import {
     CategoryView,
     FavoritesView,
