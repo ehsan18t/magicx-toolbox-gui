@@ -14,10 +14,10 @@ MagicX Toolbox is a modern, safe, and easy-to-use application designed to help y
   <p><em>Search: find any tweak or app from the title bar with Ctrl+K</em></p>
 
   <img src="static/screenshots/03-category.png" alt="Performance and Gaming category" width="800">
-  <p><em>Categories: every warning and status on the row, with staged changes applied from one bar</em></p>
+  <p><em>Categories: risk, warnings and attention on the row, with staged changes applied from one bar</em></p>
 
-  <img src="static/screenshots/04-details-panel.png" alt="Tweak details panel" width="800">
-  <p><em>Details: what a tweak changes, why, and its snapshot history, beside the list</em></p>
+  <img src="static/screenshots/04-details-panel.png" alt="Tweak details dialog" width="800">
+  <p><em>Details: what each option changes, why, and the snapshot history, in one dialog</em></p>
 </div>
 
 ## Key Features
