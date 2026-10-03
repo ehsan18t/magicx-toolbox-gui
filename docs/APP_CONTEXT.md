@@ -80,8 +80,12 @@ The profile system (`.mgx` export/import) was removed in the current build and i
 - `src/lib/stores/*.svelte.ts`: Svelte 5 rune stores.
 - `src/lib/components/ui/`: shared UI primitives.
 - `src/lib/components/items/`: tweak and app rows, the shared option control, and the details windows (`items/details/`); the At a glance pane is `layout/SummaryPanel.svelte`.
-- `src/lib/components/modals/`: profile, settings, update, about and confirm dialogs.
-- `src/lib/components/views/`: main app views.
+- `src/lib/components/modals/`: profile, update, about and confirm dialogs.
+- `src/lib/components/views/`: main app views, Settings included (it is a view, not a dialog).
+- `src/lib/components/layout/`: the title bar, navigation pane, Logs panel, page layout and summary pane.
+- `src/lib/components/feedback/`: the pending-changes bar and review, reboot banner, applying overlay, load errors and toasts.
+- `src/lib/design/`: design data (icon registry, sizes, tone maps, surfaces, the type scale).
+- `src/lib/preview/`: the mocked IPC and corpus for the `?preview` browser harness (dev builds only).
 
 Use existing UI primitives before creating new components.
 
@@ -97,6 +101,4 @@ Use existing UI primitives before creating new components.
 
 ## Validation
 
-- Full stack: `pnpm run validate`
-- Frontend only: `pnpm run lint && pnpm run type-check`
-- Backend only: `cd src-tauri && cargo check && cargo clippy --all-targets --all-features -- -D warnings`
+See `CLAUDE.md` § The gate for the full-stack, backend-only and frontend-only commands.

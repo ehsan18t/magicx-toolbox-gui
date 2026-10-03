@@ -58,11 +58,11 @@ const derived = $derived(store.value);
 | `update`, `appInfo` | `updateStore`, `appInfoStore` | Update checks and installs, and the app's version facts |
 | `manualTests` | `manualTestsStore` | The Manual Tests view (test build only) |
 
-Tauri calls live in `src/lib/api/`, one module per command group, and are called from the stores.
+Tauri calls live in `src/lib/api/`, one module per command group. They are called from the stores, from the root layout (`+layout.svelte`, for system events) and from the logger (`utils/logger.ts`).
 
 ### UI Components
 
-Reusable primitives live in `$lib/components/ui/` and are exported from its barrel: buttons and links (`Button`, `IconButton`, `LinkButton`, `ExternalLink`), surfaces (`Card`, `SectionCard`, `Callout`, `CodeBlock`, `EmptyState`), inputs (`Switch`, `SegmentedSwitch`, `Select`, `Checkbox`, `ToggleChip`, `SearchInput`, `TextField`, `TextArea`), dialogs (`Modal`, `ModalHeader`, `ModalTitle`, `ModalBody`, `ModalFooter`), and status (`Badge`, `Count`, `Dot`, `Meter`, `ProgressBar`, `Spinner`, `SkeletonList`). Their class recipes are in `ui/variants.ts`, and the barrel exports the ones other folders style their own elements with (`button`, `card`, `rowButton`, `indicator` and the like). Import a folder through its barrel: ESLint rejects a deep path such as `$lib/components/ui/variants` from outside the folder. Design data (the icon registry, `ICON_SIZE`, tone maps, the `HEADING` type scale) lives in `$lib/design`; a new icon is registered in `$lib/design/icons.ts`.
+Reusable primitives live in `$lib/components/ui/` and are exported from its barrel: buttons and links (`Button`, `IconButton`, `LinkButton`, `ExternalLink`), surfaces (`Card`, `SectionCard`, `Callout`, `CodeBlock`, `EmptyState`, `IconTile`, `SettingRow`), text (`PanelHeading`, `InlineCode`, `HighlightedText`), inputs (`Switch`, `SegmentedSwitch`, `Select`, `Checkbox`, `ToggleChip`, `SearchInput`, `TextField`, `TextArea`), dialogs (`Modal`, `ModalHeader`, `ModalTitle`, `ModalBody`, `ModalFooter`), and status (`Badge`, `Count`, `Dot`, `Meter`, `ProgressBar`, `ActivityBar`, `Spinner`, `SkeletonList`). Their class recipes are in `ui/variants.ts`, and the barrel exports the ones other folders style their own elements with (`button`, `card`, `rowButton`, `indicator` and the like). Import a folder through its barrel: ESLint rejects a deep path such as `$lib/components/ui/variants` from outside the folder. Class merging goes through `$lib/utils/cn` only (ESLint rejects importing `tailwind-merge` or `tailwind-variants` directly); its `cn` and `tv` mirror the custom theme names in `src/app.css`, which `cn.test.ts` enforces. Design data lives in `$lib/design`: the icon registry (`icons.ts`, where a new icon is registered), `ICON_SIZE` (`size.ts`), tone maps (`tone.ts`), shared surface classes (`surface.ts`) and the `HEADING` type scale (`type.ts`).
 
 ### Component Structure
 
@@ -75,7 +75,7 @@ src/lib/components/
 │   └── settings/  # Settings-only controls: the accent colour picker
 ├── layout/    # TitleBar (search box, Ctrl+K), Sidebar (nav item, footer), LogsPanel, PageLayout, SummaryPanel, AppliedMeter
 ├── feedback/  # PendingBar, PendingReviewModal, RebootBanner, ApplyingOverlay, LoadError, NoMatches, toasts
-├── modals/    # About, Update, ConfirmDialog
+├── modals/    # About, Update, ConfirmDialog, ConfirmHost (mounts the shared confirmation)
 │   └── profile/   # Profile export and import dialogs
 └── shared/    # Icon, MarkdownText
 ```
@@ -100,49 +100,31 @@ Lists that change on every keystroke or status rescan (tweak rows, search result
 
 ### Core Features
 
-> The tweak engine was rebuilt around a single typed representation. This section summarizes it;
-> [architecture/tweak/](./architecture/tweak/README.md) is the full architecture reference and
-> [TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md) is the authoring guide.
+> The tweak engine was rebuilt around a single typed representation. This section summarizes it; [architecture/tweak/](./architecture/tweak/README.md) is the full architecture reference and [TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md) is the authoring guide.
 
 #### 1. Effect-centric tweaks
-- **One managed surface**: a tweak declares its `effects:` (registry value/key, service, task, hosts,
-  firewall, shared, action) once; each **option** is a flat value-map over that surface.
-- **Computed statuses**: "System Default" is computed when the live surface matches no option; 1 option
-  renders as a System default | option switch, 2 as a segmented switch, 3 or more as a dropdown. **Unknown** (unreadable) and per-option **unavailable** are also
-  computed, never authored.
+- **One managed surface**: a tweak declares its `effects:` (registry value/key, service, task, hosts, firewall, shared, action) once; each **option** is a flat value-map over that surface.
+- **Computed statuses**: "System Default" is computed when the live surface matches no option; 1 option renders as a System default | option switch, 2 as a segmented switch, 3 or more as a dropdown. **Unknown** (unreadable) and per-option **unavailable** are also computed, never authored.
 - **Windows scoping**: `windows: { products, build, revision }` at tweak/effect/option-value level.
 
 #### 2. Typed effects (one representation)
 - Apply, capture, detect, and revert all consume the *same* typed `Value`, so they cannot drift.
-- Each `EffectKind` module co-locates read/apply/revert/detect and wraps the reused low-level primitives
-  (registry `RegSetValueExW`, service SCM, scheduler COM, hosts, firewall).
+- Each `EffectKind` module co-locates read/apply/revert/detect and wraps the reused low-level primitives (registry `RegSetValueExW`, service SCM, scheduler COM, hosts, firewall).
 - Reversibility and detectability are **typed**: Settings always; Actions iff they carry `undo`/`probe`.
 
 #### 3. Snapshot history + WAL
-- **Per-tweak history**: one atomically-written entry per capture, ordered by a monotonic sequence.
-  Authored-option captures are stored as references (re-applied from the current corpus); unauthored
-  states are value dumps.
-- **WAL action journal** makes "an action ran but nothing recorded it" impossible to lose silently: it
-  surfaces as **Needs Attention**.
+- **Per-tweak history**: one atomically-written entry per capture, ordered by a monotonic sequence. Authored-option captures are stored as references (re-applied from the current corpus); unauthored states are value dumps.
+- **WAL action journal** makes "an action ran but nothing recorded it" impossible to lose silently: it surfaces as **Needs Attention**.
 - **A snapshot is deleted only** by a verified restore, a verified rollback of the entry just pushed, a dedup that supersedes a settled entry, or explicit user consent, never on a failure path (ADR-0002). No startup stale-cleanup is implemented.
 
 #### 4. Configuration Profile System
-- **Profile export**: Export applied tweaks as shareable `.mgx` archives
-- **Profile import**: Import and validate profiles before applying
-- **Validation**: Pre-apply validation with warnings/errors and change preview
-- **System state capture**: Optional full system state snapshot for debugging
-- **Rollback support**: Automatic rollback on partial apply failure
-- See [PROFILE_SYSTEM.md](./PROFILE_SYSTEM.md) for complete documentation
+- No backend yet: every profile call rejects (see [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) #4); the v1 archive format is kept in [spec/profile-v1.md](./spec/profile-v1.md) for the rebuild.
 
 #### 5. Elevation Model (ADR-0005)
-- **Three declared levels**: `user` / `admin` / `ti`, author-declared, never inferred. A tweak
-  declares a **floor**; an effect may escalate (`effective = max(floor, step)`), never lower.
-- **User-provided**: the app ships unelevated; Admin comes from launching as admin or the in-app
-  **Elevate** relaunch, never silently acquired. Privileged tweaks are disabled until the user elevates.
-- **HKCU exception**: a user-hive effect always runs in-process as the interactive user, and a
-  token-SID/session-SID mismatch disables User-level tweaks (over-the-shoulder guard).
-- **Reads run at the current level**: TI-protected resources deny reads and report **Unknown** with a
-  needs-elevation hint until the user elevates.
+- **Three declared levels**: `user` / `admin` / `ti`, author-declared, never inferred. A tweak declares a **floor**; an effect may escalate (`effective = max(floor, step)`), never lower.
+- **User-provided**: the app ships unelevated; Admin comes from launching as admin or the in-app **Elevate** relaunch, never silently acquired. Privileged tweaks are disabled until the user elevates.
+- **HKCU exception**: a user-hive effect always runs in-process as the interactive user, and a token-SID/session-SID mismatch disables User-level tweaks (over-the-shoulder guard).
+- **Reads run at the current level**: TI-protected resources deny reads and report **Unknown** with a needs-elevation hint until the user elevates.
 
 #### 6. Risk Levels
 ```yaml
@@ -157,14 +139,10 @@ risk_levels:
 
 ## Data Model
 
-The tweak schema is **effect-centric** and defined by the compiled model in
-`src-tauri/src/tweaks/model.rs`. A tweak declares its managed surface once (`effects:`) and each option
-is a flat value-map over it. The full schema (every effect kind, value literal, presence/shared/version
-semantics, and the build guards) is documented in **[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)**; the
-one-representation model and lifecycle in **[architecture/tweak/](./architecture/tweak/README.md)**.
+The tweak schema is **effect-centric** and defined by the compiled model in `src-tauri/src/tweaks/model.rs`. A tweak declares its managed surface once (`effects:`) and each option is a flat value-map over it. The full schema (every effect kind, value literal, presence/shared/version semantics, and the build guards) is documented in **[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)**; the one-representation model and lifecycle in **[architecture/tweak/](./architecture/tweak/README.md)**.
 
 ```yaml
-# See TWEAK_AUTHORING.md for the full schema; the eight files in src-tauri/tweaks/ are the corpus.
+# See TWEAK_AUTHORING.md for the full schema; the nine files in src-tauri/tweaks/ are the corpus.
 category: { id: ..., name: ..., icon: ..., description: ... }   # one category block per file
 tweaks:
   - id: unique_tweak_id
@@ -186,8 +164,7 @@ tweaks:
 
 ### Snapshot entry
 
-Per-tweak history entries live under `snapshots/<tweak-id>/` next to the executable
-(`src-tauri/src/tweaks/snapshot.rs`):
+Per-tweak history entries live under `snapshots/<tweak-id>/` next to the executable (`src-tauri/src/tweaks/snapshot.rs`):
 
 ```rust
 struct SnapshotEntry {
@@ -201,27 +178,19 @@ struct SnapshotEntry {
 }
 ```
 
-Shared-referenced effects appear in no per-tweak entry; their return path is the per-machine
-`shared_claims.<MachineGuid>.json` record (ADR-0006).
+Shared-referenced effects appear in no per-tweak entry; their return path is the per-machine `shared_claims.<MachineGuid>.json` record (ADR-0006).
 
 ## Tweak Format Examples
 
-Worked examples for every effect kind live in
-**[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)** (§17), which also documents the full schema. The
-shipping corpus is the nine category files in [`src-tauri/tweaks/`](../src-tauri/tweaks/). In the effect-centric model there is no fixed
-change-list execution order: a tweak declares its `effects:` once, and applying an option **drives each
-effect to its desired value in declaration order** (capture → persist snapshot + WAL → drive → verify
-per effect), with atomic rollback on any failure (see [apply-and-restore.md](./architecture/tweak/apply-and-restore.md)).
+Worked examples for every effect kind live in **[TWEAK_AUTHORING.md](./TWEAK_AUTHORING.md)** (§17), which also documents the full schema. The shipping corpus is the nine category files in [`src-tauri/tweaks/`](../src-tauri/tweaks/). In the effect-centric model there is no fixed change-list execution order: a tweak declares its `effects:` once, and applying an option **drives each effect to its desired value in declaration order** (capture → persist snapshot + WAL → drive → verify per effect), with atomic rollback on any failure (see [apply-and-restore.md](./architecture/tweak/apply-and-restore.md)).
 
 ---
 
 ## Backend Services
 
 ### 1. Tweak engine (`tweaks/`) - Loading & execution
-- The compiled, build-time-validated corpus is embedded at build time; runtime access via
-  `tweaks::compiled_corpus()`
-- The engine (`tweaks/engine/`) owns the apply/detect/restore lifecycle; the `tweaks/kinds/` modules
-  are the per-kind effect executors that wrap the reused low-level primitives below
+- The compiled, build-time-validated corpus is embedded at build time; runtime access via `tweaks::compiled_corpus()`
+- The engine (`tweaks/engine/`) owns the apply/detect/restore lifecycle; the `tweaks/kinds/` modules are the per-kind effect executors that wrap the reused low-level primitives below
 
 ### 2. `registry_service` - Registry Operations
 - Read/write registry values (DWORD, SZ, BINARY, etc.)
@@ -241,32 +210,18 @@ per effect), with atomic rollback on any failure (see [apply-and-restore.md](./a
 - Uses the Task Scheduler COM API (`ITaskService`)
 
 ### 5. Snapshot store + shared claims (`tweaks/snapshot.rs`, `tweaks/shared_claims.rs`)
-- `SnapshotStore::open_default()` - per-tweak history in the portable `snapshots/` directory **next to
-  the executable** (one subdirectory per tweak-id, one atomically-written file per entry)
-- Entries are references (authored options) or value dumps (unauthored states), each carrying the WAL
-  action journal and stamped with the machine guid and the capturing user's SID; invalid entries
-  (another machine, another account's HKCU capture, dangling) are kept, excluded, and released only by
-  user consent
-- `shared_claims.<MachineGuid>.json` (under the snapshots root, one per machine) - the refcounted
-  claims record: capture-once, last-release restores the captured original (ADR-0006)
+- `SnapshotStore::open_default()` - per-tweak history in the portable `snapshots/` directory **next to the executable** (one subdirectory per tweak-id, one atomically-written file per entry)
+- Entries are references (authored options) or value dumps (unauthored states), each carrying the WAL action journal and stamped with the machine guid and the capturing user's SID; invalid entries (another machine, another account's HKCU capture, dangling) are kept, excluded, and released only by user consent
+- `shared_claims.<MachineGuid>.json` (under the snapshots root, one per machine) - the refcounted claims record: capture-once, last-release restores the captured original (ADR-0006)
 
 ### 6. `profile` - Configuration Profile Export/Import
-- `export_profile()` - Export applied tweaks to .mgx archive
-- `import_profile()` - Read and validate profile from archive
-- `apply_profile()` - Apply validated profile to system
-- `validate_profile()` - Validate profile against current system
-- See [PROFILE_SYSTEM.md](./PROFILE_SYSTEM.md) for complete documentation
+- No backend yet (see [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) #4 and [spec/profile-v1.md](./spec/profile-v1.md)).
 
 ### 7. `elevation` - TrustedInstaller privilege
-- `run_ops(level, ops)` is the only entry point: a batch of typed `BrokerOp`s run in one elevated
-  child, which is this same binary re-spawned with `--broker`
-- TrustedInstaller comes from starting its service and spoofing that process as the child's parent,
-  after verifying the opened process really is TrustedInstaller (the service stops when idle, so its
-  pid can be recycled between the SCM's answer and the handle we use)
-- Every op is a typed effect (registry value or key, service startup type, scheduled task). There is
-  no "run this string" op, so nothing the child can be asked to do is an interpreter
-- The request crosses as a file, created through `exclusive_temp` so no other process running as the
-  same user can rewrite it before the elevated child reads it
+- `run_ops(level, ops)` is the only entry point: a batch of typed `BrokerOp`s run in one elevated child, which is this same binary re-spawned with `--broker`
+- TrustedInstaller comes from starting its service and spoofing that process as the child's parent, after verifying the opened process really is TrustedInstaller (the service stops when idle, so its pid can be recycled between the SCM's answer and the handle we use)
+- Every op is a typed effect (registry value or key, service startup type, scheduled task). There is no "run this string" op, so nothing the child can be asked to do is an interpreter
+- The request crosses as a file, created through `exclusive_temp` so no other process running as the same user can rewrite it before the elevated child reads it
 
 ### 8. `system_info_service` - System Detection
 - Windows version detection (10 vs 11)
@@ -284,64 +239,13 @@ per effect), with atomic rollback on any failure (see [apply-and-restore.md](./a
 
 ## Commands (Tauri IPC)
 
-### Tweak Operations (`commands/tweaks.rs`)
-| Command                    | Description                                                              |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `get_tweaks()`             | List all tweaks from the compiled model                                  |
-| `get_statuses_stream()`    | Start the background scan; per-tweak statuses stream in as events        |
-| `rescan_after_elevation()` | Full re-scan after the user elevates (Unknowns become readable)          |
-| `apply_tweak(id, option)`  | Apply an option: capture snapshot + WAL, drive + verify, rollback on failure |
-| `restore_tweak(id)`        | Restore the head snapshot entry (undo journal, then re-apply the target) |
-| `get_elevation_state()`    | Current elevation level and SID-mismatch status                          |
-
-### Snapshot Operations
-| Command                         | Description                                                     |
-| ------------------------------- | -------------------------------------------------------------- |
-| `list_snapshot_entries(id)`     | List a tweak's snapshot history (valid and invalid entries)    |
-| `discard_snapshot_entry(...)`   | Release an invalid/dangling entry by explicit user consent (ADR-0002) |
-
-### Profile Operations
-| Command              | Description                              |
-| -------------------- | ---------------------------------------- |
-| `profile_export()`   | Export applied tweaks to .mgx archive    |
-| `profile_import()`   | Import and validate profile from archive |
-| `profile_validate()` | Validate profile against current system  |
-| `profile_apply()`    | Apply validated profile to system        |
-
-### System Operations
-| Command               | Description                                   |
-| --------------------- | --------------------------------------------- |
-| `get_system_info()`   | Get Windows version, admin status, build info |
-| `get_categories()`    | Get all tweak categories                      |
-
-### Logging Operations (`commands/logging.rs`)
-| Command                               | Description                                                        |
-| ------------------------------------- | ------------------------------------------------------------------ |
-| `get_log_tail(since)`                 | Session buffer lines after `since`, plus how many were evicted     |
-| `log_frontend(level, message)`        | Record an interface error in the session log                       |
-| `get_log_settings()`                  | Saving, Detailed, logs folder, file count and size, any problem    |
-| `set_log_settings(persist, detailed)` | Save and apply the logging settings; returns the effective state   |
-| `export_diagnostics()`                | Write one redacted diagnostics text file where the user chooses    |
-| `reveal_last_export()`                | Show the last exported file in Explorer                            |
-| `open_log_folder()`                   | Open the logs folder                                               |
-| `delete_logs()`                       | Delete the saved session files no running process is writing      |
+Commands live in `src-tauri/src/commands/<group>.rs`, one module per group (tweaks, apps, system, logging, elevation, update, general, manual tests). The `generate_handler!` list in `src-tauri/src/lib.rs` is the complete set of registered commands; the frontend reaches them through the matching module in `src/lib/api/`. [architecture/tweak/commands-and-ui.md](./architecture/tweak/commands-and-ui.md) describes the tweak commands and their events.
 
 ---
 
 ## Error Handling
 
-```rust
-enum Error {
-    RegistryOperation(String),  // Registry read/write failures
-    WindowsApi(String),         // Win32 API errors
-    RequiresAdmin,              // Operation needs elevation
-    IoOperation(String),        // File I/O errors
-    ServiceControl(String),     // Service operation failures
-    UnsupportedWindowsVersion,  // Tweak not available for this Windows
-}
-```
-
-All operations return `Result<T, Error>` propagated to frontend.
+Every command returns `Result<T, Error>`, propagated to the frontend. The `Error` enum (`thiserror`) is in `src-tauri/src/error.rs`, which is the list of failure kinds.
 
 ---
 
@@ -349,13 +253,11 @@ All operations return `Result<T, Error>` propagated to frontend.
 
 ### `build.rs` - Compile-Time Processing
 1. Loads every `*.yaml` in the `tweaks/` directory (`schema::load_corpus`)
-2. Runs the structural and semantic guards (spec §10) over each milestone of the support matrix:
-   ownership, coverage, detectability, distinctness, reversibility honesty, path syntax, typed literals
+2. Runs the structural and semantic guards over each milestone of the support matrix: ownership, coverage, detectability, distinctness, reversibility honesty, path syntax, typed literals
 3. Embeds the validated corpus as JSON (`OUT_DIR/corpus.json`)
 4. A YAML mistake or a failed guard is a **compile error**; no runtime file I/O for tweak definitions
 
-`build.rs` `#[path]`-includes the runtime's own `model`/`parse`/`schema`/`validate` modules, so
-build-time and runtime validation are the same code, so schema drift is a compile error.
+`build.rs` `#[path]`-includes the runtime's own `model`/`parse`/`schema`/`validate` modules, so build-time and runtime validation are the same code, so schema drift is a compile error.
 
 ### Generated Output
 - The validated corpus embedded as JSON, deserialized once via `tweaks::compiled_corpus()`
@@ -366,7 +268,7 @@ build-time and runtime validation are the same code, so schema drift is a compil
 
 | Path                                      | Purpose                                               |
 | ----------------------------------------- | ----------------------------------------------------- |
-| `src-tauri/tweaks/*.yaml`               | Tweak definitions (the example corpus; the full corpus is re-authored on `main`) |
+| `src-tauri/tweaks/*.yaml`               | Tweak and app definitions (one category per file) |
 | `src-tauri/src/tweaks/`                 | Tweak engine (model, schema, parse, validate, engine, kinds, snapshot, shared_claims) |
 | `src-tauri/src/commands/tweaks.rs`      | Tauri command surface for tweaks                      |
 | `src-tauri/src/services/`               | Reused low-level primitives + the elevation broker    |
@@ -382,7 +284,7 @@ src-tauri/src/tweaks/
 ├── model.rs          # Effect · Setting · ActionDef · Value · Tweak · Opt (the one representation)
 ├── schema.rs         # YAML DTOs → compiled model (build-time)
 ├── parse.rs          # typed literals, registry-path + build-expr grammars, kv_semicolon parser
-├── validate.rs       # structural + semantic guards (spec §10), per support milestone
+├── validate.rs       # structural + semantic guards, per support milestone
 ├── engine/           # apply · detect · revert · lifecycle
 ├── kinds/            # registry · service · task · hosts · firewall · action
 ├── snapshot.rs       # atomic per-tweak history
@@ -411,8 +313,4 @@ src-tauri/src/tweaks/
 
 ## Categories
 
-The engine ships nine category files in `src-tauri/tweaks/`: `ai`, `debloat`, `interface`, `network`,
-`performance`, `privacy`, `security`, `services`, `windows_update`. Each declares its category once via the `category:`
-block (`id` / `name` / `icon` / `description`), and every tweak in the file inherits it. The
-demonstration corpus that carried the engine through the redesign (`examples.yaml`) was removed once
-the real categories landed.
+The engine ships nine category files in `src-tauri/tweaks/`: `ai`, `debloat`, `interface`, `network`, `performance`, `privacy`, `security`, `services`, `windows_update`. Each declares its category once via the `category:` block (`id` / `name` / `icon` / `description`), and every tweak in the file inherits it. The demonstration corpus that carried the engine through the redesign (`examples.yaml`) was removed once the real categories landed.

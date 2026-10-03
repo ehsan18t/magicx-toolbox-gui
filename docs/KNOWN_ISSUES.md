@@ -2,14 +2,9 @@
 
 Defects that are **confirmed to exist and are meant to be fixed**, just not yet.
 
-An entry here is an open bug with its diagnosis already done: what goes wrong, whether it can bite
-today, and what the fix looks like. The point is that nobody re-derives the analysis when the work is
-picked up. Entries leave this file by being **fixed**.
+An entry here is an open bug with its diagnosis already done: what goes wrong, whether it can bite today, and what the fix looks like. The point is that nobody re-derives the analysis when the work is picked up. Entries leave this file by being **fixed**.
 
-This is not a place to park things we have decided not to do. A deliberate "we are not fixing this,
-and here is why" is an architecture decision and belongs in `docs/adr/`, where the reasoning is
-durable and reviewable. If an entry below turns out to be something we accept rather than fix, write
-the ADR and delete the entry.
+This is not a place to park things we have decided not to do. A deliberate "we are not fixing this, and here is why" is an architecture decision and belongs in `docs/adr/`, where the reasoning is durable and reviewable. If an entry below turns out to be something we accept rather than fix, write the ADR and delete the entry.
 
 | #   | Issue                                                                          | Bites today?                                               | Found      |
 | --- | ------------------------------------------------------------------------------ | ---------------------------------------------------------- | ---------- |

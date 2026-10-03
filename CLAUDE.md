@@ -63,9 +63,9 @@ into compliance in the same change.
 ## The gate — run before every commit
 
 - **Full stack:** `pnpm run validate` (prettier, tsc, svelte-check, `cargo fmt --check`, clippy
-  `-D warnings`, eslint).
+  `-D warnings`, eslint, node tests via `pnpm run test`).
 - **Backend only:** `cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings && cargo test`
-- **Frontend only:** `pnpm run check && pnpm run type-check && pnpm run lint`
+- **Frontend only:** `pnpm run check && pnpm run type-check && pnpm run lint && pnpm run test`
 
 Fix every issue the gate reports, whether or not your change caused it. Two scheduler tests that
 activate the live Task Scheduler COM service are `#[ignore]`d (they race libtest's per-test
@@ -110,8 +110,9 @@ explicitly with `cargo test -- --ignored`.
   subscription syntax with rune stores. Stores are `.svelte.ts` files with getter-based access
   (`src/lib/stores/`).
 - Tailwind CSS v4 utility classes; no global styles outside `src/app.css`. Aliases: `$lib`,
-  `@/*` → `src/*`. Import components from their folder barrel (`$lib/components/<group>`) and
-  stores from their own module (`$lib/stores/<name>.svelte`).
+  `@/*` → `src/*`. No root `$lib/index.ts`: import components from their folder barrel
+  (`$lib/components/<group>`; eslint rejects `$lib/components/*/*` deep imports, siblings import
+  relatively) and stores from their own module (`$lib/stores/<name>.svelte`).
 - Reuse the UI primitives in `$lib/components/ui` (`Button`, `Badge`, `Card`, `Modal`, `Select`,
   `Switch`, `Spinner`, …) before building new ones. Design data (icon registry, `ICON_SIZE`, tone maps) lives in
   `$lib/design`; any new icon must be registered in `$lib/design/icons.ts`, and tone opacity steps are named in

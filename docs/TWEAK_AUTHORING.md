@@ -1,30 +1,17 @@
 # Tweak Authoring Guide
 
-This is the **single source of truth** for writing a tweak for the redesigned engine. The syntax here
-is invented for this project. It is not a convention you know from `.reg` files, Chris Titus, O&O
-ShutUp10, or the old MagicX schema. Every rule, keyword, and edge case is documented here; nothing is
-left implicit. A newcomer who has never seen this system should be able to author any tweak correctly
-from this document alone.
+This is the **single source of truth** for writing a tweak for the redesigned engine. The syntax here is invented for this project. It is not a convention you know from `.reg` files, Chris Titus, O&O ShutUp10, or the old MagicX schema. Every rule, keyword, and edge case is documented here; nothing is left implicit. A newcomer who has never seen this system should be able to author any tweak correctly from this document alone.
 
-If you only read one thing: a tweak declares the **surface of state it manages once** (`effects:`), and
-each **option** is a flat value-map over that surface. That is the whole mental model. Everything else
-is detail.
+If you only read one thing: a tweak declares the **surface of state it manages once** (`effects:`), and each **option** is a flat value-map over that surface. That is the whole mental model. Everything else is detail.
 
 For the engine architecture see [architecture/tweak/](./architecture/tweak/README.md); for the reasoning behind the key decisions see the decision records under [`docs/adr/`](./adr/). This guide is **self-contained**: you never need another document to author a tweak. Its `ADR-000N` citations lead to the decision records; its `spec §N` citations name sections of a design spec that is not in the repository.
 
 ### Where tweaks live and how they compile
 
 - Tweaks are YAML files in **`src-tauri/tweaks/`** (`*.yaml` or `*.yml`).
-- **`build.rs` loads, validates, and compiles them into the binary at compile time.** A mistake in your
-  YAML is a **build error**, not a runtime surprise: the app will not compile until every tweak is
-  valid on every supported Windows build.
-- The validator, the parsers, and the compiled model are the **same Rust code the runtime uses**
-  (`src-tauri/src/tweaks/{model,parse,schema,validate}.rs`), included into `build.rs` verbatim. What
-  builds is exactly what runs; build and runtime can never disagree.
-- The shipping corpus is the nine category files in
-  [`src-tauri/tweaks/`](../src-tauri/tweaks/). Every fragment in this guide is a self-contained
-  illustration checked against the shipped validator; the `HKCU\Software\MagicXToolboxExample\...`
-  addresses in them are deliberate placeholders, not live tweaks.
+- **`build.rs` loads, validates, and compiles them into the binary at compile time.** A mistake in your YAML is a **build error**, not a runtime surprise: the app will not compile until every tweak is valid on every supported Windows build.
+- The validator, the parsers, and the compiled model are the **same Rust code the runtime uses** (`src-tauri/src/tweaks/{model,parse,schema,validate}.rs`), included into `build.rs` verbatim. What builds is exactly what runs; build and runtime can never disagree.
+- The shipping corpus is the nine category files in [`src-tauri/tweaks/`](../src-tauri/tweaks/). Every fragment in this guide is a self-contained illustration checked against the shipped validator; the `HKCU\Software\MagicXToolboxExample\...` addresses in them are deliberate placeholders, not live tweaks.
 - Removable apps are **app items**, not tweaks: they live in the same files under `apps:` and are covered in §20.
 
 ### Table of contents
@@ -56,18 +43,11 @@ For the engine architecture see [architecture/tweak/](./architecture/tweak/READM
 
 ### 1.1 Effect-centric, not option-centric
 
-Almost every other tweak tool (and the **old** MagicX schema) is **option-centric**: each option (or
-"profile", or "state") carries its own list of changes. "Disabled" has a `registry_changes` list, a
-`service_changes` list, some `pre_commands`; "Enabled" has _different_ lists. Nothing forces the two
-options to touch the _same_ set of addresses.
+Almost every other tweak tool (and the **old** MagicX schema) is **option-centric**: each option (or "profile", or "state") carries its own list of changes. "Disabled" has a `registry_changes` list, a `service_changes` list, some `pre_commands`; "Enabled" has _different_ lists. Nothing forces the two options to touch the _same_ set of addresses.
 
-That is the root of most tweak bugs. If "Disabled" writes three registry values and "Enabled" only
-writes two of them, the third is silently stranded when you flip back; the machine is now in a state no
-option describes, and revert cannot fix what it does not know it changed.
+That is the root of most tweak bugs. If "Disabled" writes three registry values and "Enabled" only writes two of them, the third is silently stranded when you flip back; the machine is now in a state no option describes, and revert cannot fix what it does not know it changed.
 
-This engine is **effect-centric**. You declare the **managed surface once** (the complete set of
-addresses this tweak touches) and then each option is just **one row in a table** whose columns are
-those addresses:
+This engine is **effect-centric**. You declare the **managed surface once** (the complete set of addresses this tweak touches) and then each option is just **one row in a table** whose columns are those addresses:
 
 ```yaml
 effects: # the managed surface: the set of addresses, declared ONCE
@@ -95,26 +75,19 @@ options: # each option supplies ONE value per effect: a table row
 | "the default" is often authored as an option | "System Default" is **computed**, never authored        |
 | detection is bespoke per tweak               | detection is `read the surface, compare to each option` |
 
-Because every option must supply a value for every effect (the **coverage rule**, §7), two options can
-never touch inconsistent address sets. Revert always knows the complete surface. This is the single most
-important idea in the system.
+Because every option must supply a value for every effect (the **coverage rule**, §7), two options can never touch inconsistent address sets. Revert always knows the complete surface. This is the single most important idea in the system.
 
 ### 1.2 A tweak = a surface + value-maps over it
 
 Precisely:
 
-- A **tweak** declares a `surface`: a list of **effects**. Each effect is one address (a registry
-  value, a service, a scheduled task, …) or one imperative action.
-- A tweak declares **options**. Each option is a `label` plus a `values` map: for every effect on the
-  surface, what value that option wants there.
-- **A `Value` is the one currency** shared by read, apply, detect, and revert. There is exactly one
-  comparison per kind, so those four operations can never disagree about what a state "is".
+- A **tweak** declares a `surface`: a list of **effects**. Each effect is one address (a registry value, a service, a scheduled task, …) or one imperative action.
+- A tweak declares **options**. Each option is a `label` plus a `values` map: for every effect on the surface, what value that option wants there.
+- **A `Value` is the one currency** shared by read, apply, detect, and revert. There is exactly one comparison per kind, so those four operations can never disagree about what a state "is".
 
 ### 1.3 "System Default" is a computed status, never authored
 
-There is **no "System Default" option and no "revert to default" button** (ADR-0003). "System Default"
-is a **status the app computes** when the live surface matches _none_ of your authored options, because
-the author never defined that exact state, or the machine drifted out of every defined one.
+There is **no "System Default" option and no "revert to default" button** (ADR-0003). "System Default" is a **status the app computes** when the live surface matches _none_ of your authored options, because the author never defined that exact state, or the machine drifted out of every defined one.
 
 You author **only the real states you offer.** The app supplies the rest of the story:
 
@@ -124,24 +97,17 @@ You author **only the real states you offer.** The app supplies the rest of the 
 
 Beyond that one-option pairing, System Default never appears in the control: the row's state line names it and the control shows no selection.
 
-The "Default" position in the UI is always this computed status, never a target you write. Returning
-toward a previous state happens only through **Restore Snapshot**, which walks the tweak's captured
-history (§15, ADR-0003/0007).
+The "Default" position in the UI is always this computed status, never a target you write. Returning toward a previous state happens only through **Restore Snapshot**, which walks the tweak's captured history (§15, ADR-0003/0007).
 
 ### 1.4 Why this design
 
-- **Drift-proof.** One declared surface means revert always has the full picture; no option can strand
-  state another option owns.
-- **One representation.** `read`, `apply`, `detect`, `revert` all speak the same `Value` per kind, so
-  "did it work?" and "what is it now?" are the same comparison: never a fabricated success.
-- **Honest by construction.** Undetectable options, colliding owners, and lying `reversible` flags are
-  **build errors**, caught before the app ships (§16). The corpus cannot contain the defects the old one
-  did.
+- **Drift-proof.** One declared surface means revert always has the full picture; no option can strand state another option owns.
+- **One representation.** `read`, `apply`, `detect`, `revert` all speak the same `Value` per kind, so "did it work?" and "what is it now?" are the same comparison: never a fabricated success.
+- **Honest by construction.** Undetectable options, colliding owners, and lying `reversible` flags are **build errors**, caught before the app ships (§16). The corpus cannot contain the defects the old one did.
 
 ### 1.5 Your first tweak: a complete, minimal, copyable file
 
-This is a full, valid corpus file. Save it as `src-tauri/tweaks/my_first.yaml`, and the app compiles it.
-It manages one registry value with two options.
+This is a full, valid corpus file. Save it as `src-tauri/tweaks/my_first.yaml`, and the app compiles it. It manages one registry value with two options.
 
 ```yaml
 category:
@@ -169,8 +135,7 @@ tweaks:
           demo_flag: absent # delete DemoFlag entirely (the reserved `absent` keyword)
 ```
 
-Every line above is required except where §3 marks a field optional. Read the rest of this guide to
-learn every other kind, keyword, and rule, but that file is a working tweak.
+Every line above is required except where §3 marks a field optional. Read the rest of this guide to learn every other kind, keyword, and rule, but that file is a working tweak.
 
 ---
 
@@ -195,18 +160,13 @@ apps: # OPTIONAL: app items, removable apps that are not tweaks (§20)
   - id: ...
 ```
 
-- **Unknown keys anywhere are a build error** (`deny_unknown_fields`). A typo'd field name is never
-  silently ignored: it fails the build naming the file and the bad key.
-- **Multiple files are merged into one corpus.** `build.rs` loads every `*.yaml`/`*.yml` file in
-  `tweaks/`, in sorted filename order, and merges them: all categories, all tweaks (each stamped with its
-  own file's category), and all `shared:` blocks into one flat corpus-wide list.
-- Because the merge is corpus-wide, **duplicate `shared:` ids and duplicate addresses are checked across
-  _all_ files, not per file** (§9, §16).
+- **Unknown keys anywhere are a build error** (`deny_unknown_fields`). A typo'd field name is never silently ignored: it fails the build naming the file and the bad key.
+- **Multiple files are merged into one corpus.** `build.rs` loads every `*.yaml`/`*.yml` file in `tweaks/`, in sorted filename order, and merges them: all categories, all tweaks (each stamped with its own file's category), and all `shared:` blocks into one flat corpus-wide list.
+- Because the merge is corpus-wide, **duplicate `shared:` ids and duplicate addresses are checked across _all_ files, not per file** (§9, §16).
 
 ### 2.1 The `category:` block
 
-Category is declared **once per file** and applies to every tweak in that file. There is **no per-tweak
-`category` field**: a tweak inherits its file's category.
+Category is declared **once per file** and applies to every tweak in that file. There is **no per-tweak `category` field**: a tweak inherits its file's category.
 
 | field         | required | meaning                                                                                               |
 | ------------- | -------- | ----------------------------------------------------------------------------------------------------- |
@@ -215,13 +175,11 @@ Category is declared **once per file** and applies to every tweak in that file. 
 | `icon`        | yes      | icon name (e.g. `"mdi:speedometer"`); must be registered in `src/lib/design/icons.ts` (a test checks) |
 | `description` | yes      | one-line category description                                                                         |
 
-All four are required strings. Put related tweaks in the same file to share a category; put a different
-category's tweaks in a different file.
+All four are required strings. Put related tweaks in the same file to share a category; put a different category's tweaks in a different file.
 
 ### 2.2 The `shared:` block
 
-Optional. A list of corpus-level shared settings: the **only** legitimate way for two tweaks to touch
-one address (§9). Omit the key entirely if the file declares none (it defaults to empty).
+Optional. A list of corpus-level shared settings: the **only** legitimate way for two tweaks to touch one address (§9). Omit the key entirely if the file declares none (it defaults to empty).
 
 ### 2.3 The `tweaks:` block
 
@@ -266,8 +224,7 @@ tweaks:
 
 ## 3. Tweak-level fields
 
-Every entry in `tweaks:` is one tweak. Here is the **complete** field reference: every field the schema
-accepts, whether it is required, its default, its legal values, and its gotchas.
+Every entry in `tweaks:` is one tweak. Here is the **complete** field reference: every field the schema accepts, whether it is required, its default, its legal values, and its gotchas.
 
 | field             | required | type / legal values                       | default           | notes                                                           |
 | ----------------- | -------- | ----------------------------------------- | ----------------- | --------------------------------------------------------------- |
@@ -288,12 +245,9 @@ accepts, whether it is required, its default, its legal values, and its gotchas.
 
 - ✅ `risk_level`, `elevation`, `reversible` are **required**: you must always state them explicitly.
 - ❌ There is **no `category` field on a tweak**: category is per file (§2.1).
-- ❌ There is **no `is_default`, `is_toggle`, or option index**: the UI shape is computed from the
-  option count, and "System Default" is a computed status (§1.3, §18).
-- ⚠️ `reversible` is **not a free choice.** You declare it, but the build **computes** the true value and
-  rejects a mismatch (`ReversibilityMismatch`, §14/§16). Declare what is actually true.
-- ⚠️ `risk_level` is purely advisory. The build does **not** infer risk or reject a "too-low" rating:
-  that rule is review guidance, not a build guard (spec §10).
+- ❌ There is **no `is_default`, `is_toggle`, or option index**: the UI shape is computed from the option count, and "System Default" is a computed status (§1.3, §18).
+- ⚠️ `reversible` is **not a free choice.** You declare it, but the build **computes** the true value and rejects a mismatch (`ReversibilityMismatch`, §14/§16). Declare what is actually true.
+- ⚠️ `risk_level` is purely advisory. The build does **not** infer risk or reject a "too-low" rating: that rule is review guidance, not a build guard (spec §10).
 
 ### 3.1 Legal enum values (exhaustive)
 
@@ -318,11 +272,8 @@ effects:
       # task | hosts | firewall | shared | action
 ```
 
-- The **`id`** is how options refer to this effect (in their `values:` map): it must be unique within
-  the tweak.
-- **Exactly one kind key** is required. Zero kind keys or two kind keys is a build error _by
-  construction_: the schema models an effect as an untagged choice, so "no valid kind" is a plain
-  deserialize failure. See the gotcha below.
+- The **`id`** is how options refer to this effect (in their `values:` map): it must be unique within the tweak.
+- **Exactly one kind key** is required. Zero kind keys or two kind keys is a build error _by construction_: the schema models an effect as an untagged choice, so "no valid kind" is a plain deserialize failure. See the gotcha below.
 
 **Common optional fields on any effect:**
 
@@ -333,16 +284,13 @@ effects:
 | `optional`   | the **6 Setting kinds only** | this resource may legitimately not exist (§8)                            |
 | `if_missing` | the **6 Setting kinds only** | value detection reads when the resource is Missing (§8)                  |
 
-> ⚠️ **Gotcha: `optional`/`if_missing` on `shared` or `action` is a build error.** They are wired only
-> on the six Setting kinds (`registry`, `registry_key`, `service`, `task`, `hosts`, `firewall`). Writing
-> `optional:` or `if_missing:` on a `shared` or `action` effect is rejected as an unknown field.
+> ⚠️ **Gotcha: `optional`/`if_missing` on `shared` or `action` is a build error.** They are wired only on the six Setting kinds (`registry`, `registry_key`, `service`, `task`, `hosts`, `firewall`). Writing `optional:` or `if_missing:` on a `shared` or `action` effect is rejected as an unknown field.
 
 > ⚠️ **Gotcha: a typo in the kind key gives an opaque error.** Because an effect is modelled as an untagged choice of kinds, misspelling the kind key (`regisrty:` instead of `registry:`) or supplying two kind keys makes _no_ kind match. You will see a YAML-level error like `data did not match any variant of untagged enum EffectRaw` (surfaced as the `Yaml` build error, §16). If you get that message, check that each effect has exactly one, correctly-spelled kind key.
 
 The eight kinds divide into three families:
 
-- **Settings** (declarative, reversible by construction, always detectable): `registry`, `registry_key`,
-  `service`, `task`, `hosts`, `firewall`.
+- **Settings** (declarative, reversible by construction, always detectable): `registry`, `registry_key`, `service`, `task`, `hosts`, `firewall`.
 - **Shared** (a reference to a corpus-level shared setting): `shared`.
 - **Action** (the imperative escape hatch): `action`.
 
@@ -367,12 +315,8 @@ Manages one **named registry value**.
 
 **The `key` path (spec §5.1):**
 
-- Written as one merged string, `HIVE\Sub\Key\...`, exactly as regedit shows it. Use **plain or
-  single-quoted YAML scalars** so backslashes are written **singly** (`'HKCU\Software\...'`). Do **not**
-  double them.
-- **v1 hives are HKLM and HKCU only**, short or long spelling, both normalized at build:
-  `HKLM` = `HKEY_LOCAL_MACHINE`, `HKCU` = `HKEY_CURRENT_USER`. Any other hive (`HKCR`, `HKU`, `HKCC`) is
-  a build error.
+- Written as one merged string, `HIVE\Sub\Key\...`, exactly as regedit shows it. Use **plain or single-quoted YAML scalars** so backslashes are written **singly** (`'HKCU\Software\...'`). Do **not** double them.
+- **v1 hives are HKLM and HKCU only**, short or long spelling, both normalized at build: `HKLM` = `HKEY_LOCAL_MACHINE`, `HKCU` = `HKEY_CURRENT_USER`. Any other hive (`HKCR`, `HKU`, `HKCC`) is a build error.
 - These are build errors (the exact messages are in §16 under `InvalidAddress`):
   - a **leading** backslash (`\HKLM\...`),
   - a **trailing** backslash (`HKLM\...\`),
@@ -381,18 +325,12 @@ Manages one **named registry value**.
   - **no key path** (`HKLM` alone),
   - an **unsupported hive**.
 
-**Value domain:** a typed literal in `type`'s terms, or the reserved keyword `absent` to delete the
-value (§5, §6). `present` is **not** valid on a registry value (only presence kinds have it).
+**Value domain:** a typed literal in `type`'s terms, or the reserved keyword `absent` to delete the value (§5, §6). `present` is **not** valid on a registry value (only presence kinds have it).
 
 **Runtime behavior:**
 
-- **read/detect:** returns the typed value; a missing key _or_ missing value both read as `Absent`; a
-  value stored as a _different_ type than declared is a typed error (the tweak reads **Unknown**, never a
-  fake absence); a malformed packed value is a typed error (**Unknown**).
-- **apply/restore:** writes the value, **auto-creating any missing parent keys** (standard
-  `RegCreateKeyEx`). Driving to `absent` deletes the value; deleting an already-absent value is an
-  idempotent success, not a failure. Capture reads the pre-apply value (possibly `Absent`) so revert can
-  put it back.
+- **read/detect:** returns the typed value; a missing key _or_ missing value both read as `Absent`; a value stored as a _different_ type than declared is a typed error (the tweak reads **Unknown**, never a fake absence); a malformed packed value is a typed error (**Unknown**).
+- **apply/restore:** writes the value, **auto-creating any missing parent keys** (standard `RegCreateKeyEx`). Driving to `absent` deletes the value; deleting an already-absent value is an idempotent success, not a failure. Capture reads the pre-apply value (possibly `Absent`) so revert can put it back.
 
 ---
 
@@ -436,23 +374,14 @@ Manages the **startup type** of a named service.
 
 **Runtime behavior:**
 
-- **read/detect:** returns the current start type, or **`Missing`** if the service is not installed
-  (§8). `automatic_delayed` is detected via the companion `DelayedAutostart` registry value beside the
-  service's `Start` value: a merely-absent companion never fabricates delayed-start.
-- **apply/restore:** sets the start type through the SCM and writes the `DelayedAutostart` companion to
-  match (never left stale). Driving a service to `Missing` is a **defined no-op**. Driving a _real_ start
-  type at a service that is **not installed** is a typed `ResourceMissing` error: **the engine never
-  installs or uninstalls services** (spec §5.4). Declare `optional: true` for services that may be
-  absent (§8).
+- **read/detect:** returns the current start type, or **`Missing`** if the service is not installed (§8). `automatic_delayed` is detected via the companion `DelayedAutostart` registry value beside the service's `Start` value: a merely-absent companion never fabricates delayed-start.
+- **apply/restore:** sets the start type through the SCM and writes the `DelayedAutostart` companion to match (never left stale). Driving a service to `Missing` is a **defined no-op**. Driving a _real_ start type at a service that is **not installed** is a typed `ResourceMissing` error: **the engine never installs or uninstalls services** (spec §5.4). Declare `optional: true` for services that may be absent (§8).
 
-> ❌ **Do not reach a service through its raw registry storage.** Writing
-> `HKLM\SYSTEM\...\Services\<name>\Start` as a `registry` effect is a build error (`NonCanonicalKind`,
-> §16). Use the `service` kind: that is how ownership stays single (§9).
+> ❌ **Do not reach a service through its raw registry storage.** Writing `HKLM\SYSTEM\...\Services\<name>\Start` as a `registry` effect is a build error (`NonCanonicalKind`, §16). Use the `service` kind: that is how ownership stays single (§9).
 >
 > The same applies to the `DelayedAutostart` value beside `Start`, and to a `shared:` entry addressing either one: the `service` kind owns both (use `automatic_delayed` for delayed start).
 
-> ❌ **You cannot disable `TrustedInstaller`** via a typed Service effect: it would strand the app's own
-> TI elevation path (`TrustedInstallerDisabled`, §16). A `shared:` entry that sets it to `disabled` is rejected the same way.
+> ❌ **You cannot disable `TrustedInstaller`** via a typed Service effect: it would strand the app's own TI elevation path (`TrustedInstallerDisabled`, §16). A `shared:` entry that sets it to `disabled` is rejected the same way.
 
 ---
 
@@ -469,18 +398,14 @@ Manages **whether a scheduled task is enabled**.
 | ------ | -------- | -------------------------------------------------------------- |
 | `path` | **yes**  | the **exact** task path, no patterns, no wildcards (spec §5.1) |
 
-**Value domain:** `enabled` or `disabled`. (v1 task richness is enabled/disabled only, triggers and
-actions are out of scope.)
+**Value domain:** `enabled` or `disabled`. (v1 task richness is enabled/disabled only, triggers and actions are out of scope.)
 
 **Runtime behavior:**
 
 - **read/detect:** returns `enabled`/`disabled`, or **`Missing`** if the task does not exist (§8).
-- **apply/restore:** enables/disables via the Task Scheduler COM service. Driving to `Missing` is a
-  no-op; a real value at a missing task is a typed `ResourceMissing` error (never creates/deletes tasks).
+- **apply/restore:** enables/disables via the Task Scheduler COM service. Driving to `Missing` is a no-op; a real value at a missing task is a typed `ResourceMissing` error (never creates/deletes tasks).
 
-> ❌ **No patterns.** The old `task_name_pattern` is gone (§18). Address the exact path; if a task may not
-> exist on some machines, use `optional: true` (§8). Reaching a task through its registry storage
-> (`…\Schedule\TaskCache\…`) is a build error (`NonCanonicalKind`, §16): use the `task` kind.
+> ❌ **No patterns.** The old `task_name_pattern` is gone (§18). Address the exact path; if a task may not exist on some machines, use `optional: true` (§8). Reaching a task through its registry storage (`…\Schedule\TaskCache\…`) is a build error (`NonCanonicalKind`, §16): use the `task` kind.
 
 ---
 
@@ -500,11 +425,9 @@ Manages **whether an `ip domain` line exists in the hosts file**.
 
 **Value domain:** `present` or `absent`.
 
-**Runtime behavior:** `read` reports whether that exact `ip domain` line exists; `present` adds it,
-`absent` removes it.
+**Runtime behavior:** `read` reports whether that exact `ip domain` line exists; `present` adds it, `absent` removes it.
 
-> 💡 Use RFC-2606 reserved domains (`.invalid`, `.example`) for demonstration/test tweaks so they can
-> never affect real name resolution.
+> 💡 Use RFC-2606 reserved domains (`.invalid`, `.example`) for demonstration/test tweaks so they can never affect real name resolution.
 
 ---
 
@@ -538,21 +461,15 @@ Manages **whether a named firewall rule exists**, carrying the full definition n
 
 **Value domain:** `present` or `absent`.
 
-**Runtime behavior:** the create/delete decision rides **entirely on the value**: `present` creates the
-rule from the full definition; `absent` deletes the rule by name. Because the value alone carries the
-decision, **`direction` and `action` are required**: whenever a `present` option drives the rule, the
-address must already describe a complete, creatable rule. Restore recreates from the **authored
-definition**, not from some prior captured rule state: that fidelity limit is by design.
+**Runtime behavior:** the create/delete decision rides **entirely on the value**: `present` creates the rule from the full definition; `absent` deletes the rule by name. Because the value alone carries the decision, **`direction` and `action` are required**: whenever a `present` option drives the rule, the address must already describe a complete, creatable rule. Restore recreates from the **authored definition**, not from some prior captured rule state: that fidelity limit is by design.
 
-> ⚠️ `firewall` cannot be a **shared** setting (§9): the `shared:` block has no firewall variant. If two
-> tweaks need the same rule, that is a signal they are one tweak.
+> ⚠️ `firewall` cannot be a **shared** setting (§9): the `shared:` block has no firewall variant. If two tweaks need the same rule, that is a signal they are one tweak.
 
 ---
 
 ### 4.7 `shared`: a reference to a corpus-level shared setting
 
-References a corpus-level shared setting by id. This is the **only** way two tweaks may touch one
-address (§9).
+References a corpus-level shared setting by id. This is the **only** way two tweaks may touch one address (§9).
 
 ```yaml
 - id: shared_ref
@@ -563,18 +480,15 @@ address (§9).
 | -------- | -------- | --------------------------------------------- |
 | `shared` | **yes**  | the id of a corpus-level `shared:` entry (§9) |
 
-**Value domain:** `claim` or `unclaimed` (always explicit in every option; omission is a build error,
-`SharedNotExplicit`, §16).
+**Value domain:** `claim` or `unclaimed` (always explicit in every option; omission is a build error, `SharedNotExplicit`, §16).
 
-**Runtime behavior:** its lifecycle is the corpus-wide **claims record**, not the per-tweak snapshot
-(§9). It may **not** carry `optional`/`if_missing`. It **may** carry `elevation`/`windows`.
+**Runtime behavior:** its lifecycle is the corpus-wide **claims record**, not the per-tweak snapshot (§9). It may **not** carry `optional`/`if_missing`. It **may** carry `elevation`/`windows`.
 
 ---
 
 ### 4.8 `action`: the imperative escape hatch
 
-Runs a `cmd`/`powershell` script for changes that cannot be expressed as a declarative Setting. Full
-contract in §12.
+Runs a `cmd`/`powershell` script for changes that cannot be expressed as a declarative Setting. Full contract in §12.
 
 ```yaml
 - id: flush_dns
@@ -595,20 +509,15 @@ contract in §12.
 
 **Value domain:** `run`, or **omit the entry entirely** (omitted = "this option does not run it").
 
-> ⚠️ **An action may never run at `ti`** (§13.2): a routed level of TrustedInstaller is a build error,
-> whether the `ti` comes from the tweak's floor or from the effect's own `elevation:`.
+> ⚠️ **An action may never run at `ti`** (§13.2): a routed level of TrustedInstaller is a build error, whether the `ti` comes from the tweak's floor or from the effect's own `elevation:`.
 
-> ⚠️ **`apply` and `undo` are inline strings only in v1** (usually a YAML block scalar with `|`).
-> There is **no `apply: { file: … }` filed-script form** in the shipped schema: writing one is a build
-> error. See §12.6. `probe` also accepts the native `registry` form in §12.5, which avoids a process
-> entirely and is what you should reach for first.
+> ⚠️ **`apply` and `undo` are inline strings only in v1** (usually a YAML block scalar with `|`). There is **no `apply: { file: … }` filed-script form** in the shipped schema: writing one is a build error. See §12.6. `probe` also accepts the native `registry` form in §12.5, which avoids a process entirely and is what you should reach for first.
 
 ---
 
 ## 5. Value literals: the complete grammar
 
-An option's `values:` map keys an **effect id** to a **value literal**. What is legal depends entirely
-on the effect's kind. This section documents **every** literal form (spec §6.2).
+An option's `values:` map keys an **effect id** to a **value literal**. What is legal depends entirely on the effect's kind. This section documents **every** literal form (spec §6.2).
 
 ### 5.1 Registry value literals
 
@@ -623,19 +532,10 @@ on the effect's kind. This section documents **every** literal form (spec §6.2)
 
 **Details and edge cases:**
 
-- **`REG_DWORD`/`REG_QWORD`** accept decimal or `0x` hex. You may write hex bare (`0x2`, YAML parses it
-  as an integer) or quoted (`"0x2"`, parsed as a string then converted); both compile to the same
-  value. A `REG_DWORD` value that does not fit in 32 bits (`u32`) is a build error; use `REG_QWORD` for
-  larger.
-  - ⚠️ **Very large `REG_QWORD`s** (above `9223372036854775807`, i.e. `i64::MAX`) must be **quoted as a
-    string** (`"0xFFFFFFFFFFFFFFFF"` or `"18446744073709551615"`), because a bare YAML integer that big
-    cannot be represented. Quoted, it goes through the string→u64 path and works.
-- **`REG_SZ`/`REG_EXPAND_SZ`** are verbatim strings. `""` is a **legitimate empty string** and keeps
-  working; it is _not_ a delete (§6). A backslash inside a double-quoted YAML string must be escaped
-  (`"C:\\Windows"`); prefer single quotes (`'C:\Windows'`) to avoid escaping.
-- **`REG_BINARY`** is the `.reg` hex-pair form. Each token is **exactly two hex digits**; separate tokens
-  by commas or spaces (not both styles at once). An odd-length token, a non-hex token, or a lone digit is
-  a build error (it surfaces as `InvalidOptionValue`, §16 #4). Example: `"90,12,03,80"` = 4 bytes.
+- **`REG_DWORD`/`REG_QWORD`** accept decimal or `0x` hex. You may write hex bare (`0x2`, YAML parses it as an integer) or quoted (`"0x2"`, parsed as a string then converted); both compile to the same value. A `REG_DWORD` value that does not fit in 32 bits (`u32`) is a build error; use `REG_QWORD` for larger.
+  - ⚠️ **Very large `REG_QWORD`s** (above `9223372036854775807`, i.e. `i64::MAX`) must be **quoted as a string** (`"0xFFFFFFFFFFFFFFFF"` or `"18446744073709551615"`), because a bare YAML integer that big cannot be represented. Quoted, it goes through the string→u64 path and works.
+- **`REG_SZ`/`REG_EXPAND_SZ`** are verbatim strings. `""` is a **legitimate empty string** and keeps working; it is _not_ a delete (§6). A backslash inside a double-quoted YAML string must be escaped (`"C:\\Windows"`); prefer single quotes (`'C:\Windows'`) to avoid escaping.
+- **`REG_BINARY`** is the `.reg` hex-pair form. Each token is **exactly two hex digits**; separate tokens by commas or spaces (not both styles at once). An odd-length token, a non-hex token, or a lone digit is a build error (it surfaces as `InvalidOptionValue`, §16 #4). Example: `"90,12,03,80"` = 4 bytes.
 - **`REG_MULTI_SZ`** is written as a **YAML list of strings**, never a comma-joined string. `[]` clears it (deliberately better than `.reg`'s unwritable `hex(7):`): it writes an empty value, which reads back and verifies as `[]`. Every entry must be a non-empty string, since the registry reads an empty entry as the end of the list: `["a", ""]` is a build error (`InvalidOptionValue`). A non-list value on a `REG_MULTI_SZ` address is a build error (`WrongLiteralShape`: "a string is not valid for MultiSz"); a list value on a non-`REG_MULTI_SZ` address is likewise an error ("a list is not valid for Dword", etc.).
 
 ```yaml
@@ -665,42 +565,32 @@ values:
 | `shared`           | `claim` \| `unclaimed`                                                             |
 | `action`           | `run` (or omit the entry)                                                          |
 
-Using the wrong keyword for a kind is a build error (`InvalidOptionValue`, §16), e.g. a service value
-that is not one of the six start types, a task value that is not `enabled`/`disabled`, a shared value
-that is not `claim`/`unclaimed`, or an action value that is not `run`.
+Using the wrong keyword for a kind is a build error (`InvalidOptionValue`, §16), e.g. a service value that is not one of the six start types, a task value that is not `enabled`/`disabled`, a shared value that is not `claim`/`unclaimed`, or an action value that is not `run`.
 
 ### 5.3 The `.reg` alignment (and where it stops)
 
-Registry **type names** and the binary/`REG_MULTI_SZ` shapes are deliberately `.reg`-aligned so authors
-who know `.reg` files feel at home. But **there is no `.reg` import and no `.reg` delete spellings**
-(`-"Value"=-`). The YAML schema is the single source of truth. Deletion is the `absent` keyword (§6);
-key presence is the `registry_key` Setting (§4.2).
+Registry **type names** and the binary/`REG_MULTI_SZ` shapes are deliberately `.reg`-aligned so authors who know `.reg` files feel at home. But **there is no `.reg` import and no `.reg` delete spellings** (`-"Value"=-`). The YAML schema is the single source of truth. Deletion is the `absent` keyword (§6); key presence is the `registry_key` Setting (§4.2).
 
 ### 5.4 The `{ literal: ... }` escape
 
-The only value form that is a **map** (other than a per-option-value windows scope, §10) is the escape
-for a string whose content is literally a reserved word:
+The only value form that is a **map** (other than a per-option-value windows scope, §10) is the escape for a string whose content is literally a reserved word:
 
 ```yaml
 values:
   some_string: { literal: absent } # a REG_SZ whose CONTENT is the four letters "absent"
 ```
 
-Without the escape, a bare `absent` is always the keyword. The escape exists purely to reach the
-"ordinary string" path (§6.3). It only makes sense on `REG_SZ`/`REG_EXPAND_SZ` targets; on a
-presence kind it is a build error (there is no string content there to render).
+Without the escape, a bare `absent` is always the keyword. The escape exists purely to reach the "ordinary string" path (§6.3). It only makes sense on `REG_SZ`/`REG_EXPAND_SZ` targets; on a presence kind it is a build error (there is no string content there to render).
 
 ---
 
 ## 6. The `absent` keyword: deep dive
 
-`absent` is the **one reserved word for "does not exist."** Because it is the _only_ way to spell
-deletion, it must work everywhere: this section covers exactly how (spec §5.1/§6.2, ADR-0004).
+`absent` is the **one reserved word for "does not exist."** Because it is the _only_ way to spell deletion, it must work everywhere: this section covers exactly how (spec §5.1/§6.2, ADR-0004).
 
 ### 6.1 `absent` works at value, key, and field depth, for every type
 
-A **bare** `absent` is _always_ the keyword, never string content, at all three depths and for
-**every** value type, including `REG_SZ`/`REG_EXPAND_SZ`:
+A **bare** `absent` is _always_ the keyword, never string content, at all three depths and for **every** value type, including `REG_SZ`/`REG_EXPAND_SZ`:
 
 ```yaml
 values:
@@ -714,18 +604,13 @@ values:
 It compiles to two typed outcomes depending on the kind (one spelling, one comparison per kind):
 
 - On a **registry value or packed field** → `Value::Absent` (delete the value / remove the field).
-- On a **presence kind** (`registry_key`, `hosts`, `firewall`) → `Value::Present(false)` (remove the
-  resource).
+- On a **presence kind** (`registry_key`, `hosts`, `firewall`) → `Value::Present(false)` (remove the resource).
 
-> **Why "for every type, including `REG_SZ`"?** A type class with no deletion spelling would be a _hole_,
-> not a safeguard (spec invariant 13). If `absent` were treated as string content on `REG_SZ`, you could
-> never delete a `REG_SZ` value declaratively. So a bare `absent` is the keyword even there.
+> **Why "for every type, including `REG_SZ`"?** A type class with no deletion spelling would be a _hole_, not a safeguard (spec invariant 13). If `absent` were treated as string content on `REG_SZ`, you could never delete a `REG_SZ` value declaratively. So a bare `absent` is the keyword even there.
 
 ### 6.2 `present`: the positive mirror (presence kinds only)
 
-`present` is `absent`'s positive twin, legal **only** on the three presence kinds (`registry_key`,
-`hosts`, `firewall`). On a **registry value** it is a build error, because a registry value has no
-"present" state, only a value or its absence:
+`present` is `absent`'s positive twin, legal **only** on the three presence kinds (`registry_key`, `hosts`, `firewall`). On a **registry value** it is a build error, because a registry value has no "present" state, only a value or its absence:
 
 ```
 `present` is not valid for a registry value; only registry keys, hosts entries, and firewall rules have a present/absent state
@@ -740,9 +625,7 @@ values:
   some_string: { literal: absent } # REG_SZ content = "absent", NOT a delete
 ```
 
-This is the escape's _entire_ purpose: it routes the text through the ordinary-string path instead of
-the keyword path. The same applies to any reserved word you want as literal string content
-(`{ literal: present }`, `{ literal: run }`, …).
+This is the escape's _entire_ purpose: it routes the text through the ordinary-string path instead of the keyword path. The same applies to any reserved word you want as literal string content (`{ literal: present }`, `{ literal: run }`, …).
 
 ### 6.4 `null`, omitted, or bare is a BUILD ERROR: never a silent delete
 
@@ -752,9 +635,7 @@ A `null`, an omitted value, or a bare `key:` with nothing after it is a **build 
 value is null or empty: write `absent` to delete it, or supply a literal
 ```
 
-**Why (ADR-0004):** YAML maps `value: null`, an omitted value, and a bare `some_effect:` all to the same
-"absent" node. A _forgotten_ value must never silently become a delete. So the build rejects the empty
-case and tells you the alternative: if you genuinely mean "delete", type `absent` deliberately.
+**Why (ADR-0004):** YAML maps `value: null`, an omitted value, and a bare `some_effect:` all to the same "absent" node. A _forgotten_ value must never silently become a delete. So the build rejects the empty case and tells you the alternative: if you genuinely mean "delete", type `absent` deliberately.
 
 ```yaml
 # ❌ WRONG: a forgotten value; build error naming `absent`
@@ -778,9 +659,7 @@ values:
   some_string: ""
 ```
 
-> Note: coverage (§7) _also_ independently rejects an omitted effect: every option must value every
-> Setting effect. So a forgotten value is caught twice: as a null/empty literal and (if the whole key is
-> missing) as missing coverage.
+> Note: coverage (§7) _also_ independently rejects an omitted effect: every option must value every Setting effect. So a forgotten value is caught twice: as a null/empty literal and (if the whole key is missing) as missing coverage.
 
 ---
 
@@ -805,8 +684,7 @@ options:
 
 ### 7.1 The coverage rule: every option values every effect
 
-**Every option must supply a value for every _Setting_ effect on the surface.** A hole is a build error
-(`MissingCoverage`, §16):
+**Every option must supply a value for every _Setting_ effect on the surface.** A hole is a build error (`MissingCoverage`, §16):
 
 ```
 tweak `T` option `O` does not cover effect `E`: every option must supply a value for every Setting effect on the surface
@@ -820,9 +698,7 @@ The three families cover differently:
 | **`shared`**                                                                     | **must** be explicit `claim` or `unclaimed` in every option (omission is `SharedNotExplicit`, §16) |
 | **`action`**                                                                     | `run` **or omitted** (omitted = "this option does not run it")                                     |
 
-**Why:** coverage is what makes stranded state impossible (§1.1). If an option could omit a Setting,
-flipping to it would leave that address at whatever the previous option set: a state no option
-describes.
+**Why:** coverage is what makes stranded state impossible (§1.1). If an option could omit a Setting, flipping to it would leave that address at whatever the previous option set: a state no option describes.
 
 ### 7.2 The shape rule: switch vs dropdown
 
@@ -832,15 +708,11 @@ The UI shape follows the option count (spec §6.1, ADR-0003):
 - **3 or more → a dropdown** (A / B / C / …).
 - Except beside a lone option, System Default never joins a control; the row's state line shows it.
 
-You never author "System Default": it is the computed status when the live surface matches no option
-(§1.3, §15). So a **1-option** tweak is a switch between "the one state you defined" and "whatever the
-machine was" (Default).
+You never author "System Default": it is the computed status when the live surface matches no option (§1.3, §15). So a **1-option** tweak is a switch between "the one state you defined" and "whatever the machine was" (Default).
 
 ### 7.3 Per-option-value Windows scoping
 
-An individual value may itself be scoped to certain Windows builds using the two-key map form
-`{ value: <literal>, windows: {...} }`. This is the third scoping level; see §10.4. It works for
-Setting, `shared`, and `action` values alike.
+An individual value may itself be scoped to certain Windows builds using the two-key map form `{ value: <literal>, windows: {...} }`. This is the third scoping level; see §10.4. It works for Setting, `shared`, and `action` values alike.
 
 ### 7.4 Worked multi-option example
 
@@ -872,9 +744,7 @@ Both options value all three effects; they differ on detectable Settings; the bu
 
 ## 8. Presence: `optional` / `if_missing`
 
-A service or scheduled task (or any Setting) may legitimately **not exist** on a given machine. That is
-the typed **`Missing`** state, distinct from `absent` (a state you can drive to) and from a read error
-(spec §5.4).
+A service or scheduled task (or any Setting) may legitimately **not exist** on a given machine. That is the typed **`Missing`** state, distinct from `absent` (a state you can drive to) and from a read error (spec §5.4).
 
 ### 8.1 The three related states: don't confuse them
 
@@ -886,11 +756,8 @@ the typed **`Missing`** state, distinct from `absent` (a state you can drive to)
 
 Key rules:
 
-- **`Missing` is capture-only.** No option can author it. **Driving to `Missing` is a defined no-op**:
-  the engine **never installs or uninstalls** services/tasks/resources.
-- A **non-optional** effect that reads `Missing` is a **typed error** → the tweak reads **Unknown**. That
-  is deliberate: if you did not say a resource is allowed to be absent, its absence is a surprise worth
-  surfacing.
+- **`Missing` is capture-only.** No option can author it. **Driving to `Missing` is a defined no-op**: the engine **never installs or uninstalls** services/tasks/resources.
+- A **non-optional** effect that reads `Missing` is a **typed error** → the tweak reads **Unknown**. That is deliberate: if you did not say a resource is allowed to be absent, its absence is a surprise worth surfacing.
 
 ### 8.2 `optional: true`
 
@@ -906,8 +773,7 @@ Now a `Missing` capture is legal for this effect instead of an error.
 
 ### 8.3 `if_missing: <value>`
 
-Optionally add `if_missing:` meaning "on a machine where this resource is absent, **detection treats this
-effect as reading `<value>`**":
+Optionally add `if_missing:` meaning "on a machine where this resource is absent, **detection treats this effect as reading `<value>`**":
 
 ```yaml
 - id: demo_service
@@ -916,42 +782,22 @@ effect as reading `<value>`**":
   if_missing: disabled # a machine without this service counts as `disabled` for detection
 ```
 
-- The `if_missing` value is parsed against the **effect's own domain** (a service → a start type; a
-  presence kind → `present`/`absent`; a registry value → a literal or `absent`). An `if_missing` that
-  does not parse in that domain is a build error (`InvalidIfMissing`, §16).
-- **`if_missing` requires `optional: true`.** Declaring it on a non-optional effect is a build error
-  (`IfMissingWithoutOptional`, §16): a non-optional effect never reads `Missing` (it errors instead), so
-  `if_missing` there is dead authoring.
+- The `if_missing` value is parsed against the **effect's own domain** (a service → a start type; a presence kind → `present`/`absent`; a registry value → a literal or `absent`). An `if_missing` that does not parse in that domain is a build error (`InvalidIfMissing`, §16).
+- **`if_missing` requires `optional: true`.** Declaring it on a non-optional effect is a build error (`IfMissingWithoutOptional`, §16): a non-optional effect never reads `Missing` (it errors instead), so `if_missing` there is dead authoring.
 
 ### 8.4 Unavailable-on-this-machine
 
-If an option's desired value for a `Missing` resource **differs** from that effect's `if_missing`
-meaning (e.g. an option that _enables_ a service that is not installed), that option is shown
-**unavailable on this machine** at detect time, and apply is never offered for it. If the resource
-vanishes between detect and apply, the apply fails typed and rolls back: never a silent skip.
+If an option's desired value for a `Missing` resource **differs** from that effect's `if_missing` meaning (e.g. an option that _enables_ a service that is not installed), that option is shown **unavailable on this machine** at detect time, and apply is never offered for it. If the resource vanishes between detect and apply, the apply fails typed and rolls back: never a silent skip.
 
-When the desired value **equals** that effect's `if_missing` meaning, the effect is already in the
-requested state by definition, so applying it is a **verified no-op** (`EffectResultKind::NoOp`) and
-the option applies normally. This is what keeps apply consistent with detect: detect maps a `Missing`
-read on an `optional` effect to its `if_missing` value and therefore reports the option as available
-and satisfied, so apply must not turn around and abort on the same effect. A tweak that disables a
-list of scheduled tasks, some of which do not exist on every Windows build, is the motivating case.
+When the desired value **equals** that effect's `if_missing` meaning, the effect is already in the requested state by definition, so applying it is a **verified no-op** (`EffectResultKind::NoOp`) and the option applies normally. This is what keeps apply consistent with detect: detect maps a `Missing` read on an `optional` effect to its `if_missing` value and therefore reports the option as available and satisfied, so apply must not turn around and abort on the same effect. A tweak that disables a list of scheduled tasks, some of which do not exist on every Windows build, is the motivating case.
 
-> ⚠️ `optional` still does **not** weaken verification. It governs presence only: a resource that
-> _does_ exist is driven and read back exactly as a non-optional one, and a mismatch still rolls back.
+> ⚠️ `optional` still does **not** weaken verification. It governs presence only: a resource that _does_ exist is driven and read back exactly as a non-optional one, and a mismatch still rolls back.
 
-This holds at **every** level, including `ti`. It did not always: a routed drive handed an absent
-resource to the elevated child, which failed on it and returned an opaque denial, and the no-op guard
-above matches only a typed "resource missing". So an `optional` effect at `ti` used to abort its whole
-tweak and roll it back instead of no-opping, which is exactly the case §8.4 exists to prevent. The
-existence check now runs before anything is spawned, so an absent optional resource never reaches a
-child at all.
+This holds at **every** level, including `ti`. It did not always: a routed drive handed an absent resource to the elevated child, which failed on it and returned an opaque denial, and the no-op guard above matches only a typed "resource missing". So an `optional` effect at `ti` used to abort its whole tweak and roll it back instead of no-opping, which is exactly the case §8.4 exists to prevent. The existence check now runs before anything is spawned, so an absent optional resource never reaches a child at all.
 
 ### 8.5 Keep every option detectable _without_ optional effects
 
-Because optional effects may be `Missing` on a real machine, **every option must stay distinguishable
-without them.** The build enforces this: each option needs **at least one non-optional detectable
-effect** on every supported build (`NotDetectable`, §16). Pair optional effects with a non-optional one:
+Because optional effects may be `Missing` on a real machine, **every option must stay distinguishable without them.** The build enforces this: each option needs **at least one non-optional detectable effect** on every supported build (`NotDetectable`, §16). Pair optional effects with a non-optional one:
 
 ```yaml
 effects:
@@ -972,24 +818,17 @@ options:
     values: { demo_marker: 0, demo_service: disabled, demo_task: disabled }
 ```
 
-The `demo_marker` registry value is non-optional, so even on a machine lacking the service or task, each
-option is still told apart by the marker.
+The `demo_marker` registry value is non-optional, so even on a machine lacking the service or task, each option is still told apart by the marker.
 
 ### 8.6 When to use `optional`
 
-Use it for resources that **genuinely vary by Windows edition/SKU or servicing state**: a service or
-task present on some builds and absent on others. Do **not** use it to paper over a wrong service name or
-a task that should always exist. And never rely on an optional effect as an option's _only_
-distinguisher (§8.5).
+Use it for resources that **genuinely vary by Windows edition/SKU or servicing state**: a service or task present on some builds and absent on others. Do **not** use it to paper over a wrong service name or a task that should always exist. And never rely on an optional effect as an option's _only_ distinguisher (§8.5).
 
 ---
 
 ## 9. Shared settings: declared, refcounted
 
-Two tweaks must never both own one address. If tweak A and tweak B both write one registry value, then
-A's revert changes the value out from under B: B's option is genuinely no longer in effect, detection
-honestly shows B at System Default, and the user watches a tweak flip itself off (ADR-0006). This
-happened in practice with the old corpus.
+Two tweaks must never both own one address. If tweak A and tweak B both write one registry value, then A's revert changes the value out from under B: B's option is genuinely no longer in effect, detection honestly shows B at System Default, and the user watches a tweak flip itself off (ADR-0006). This happened in practice with the old corpus.
 
 So the **ownership guard** (§16) enforces **one address, one owner, corpus-wide.** The _only_ sanctioned way for two tweaks that can both run on one machine to touch one address is a corpus-level `shared:` block. Tweaks gated to Windows versions that never overlap may own the same address, since only one can ever be available (§16, `DuplicateAddress`).
 
@@ -1010,9 +849,7 @@ shared:
 | _one kind key_ | **yes**  | `registry`, `registry_key`, `service`, `task`, or `hosts`, **not** `firewall`, **not** `action` |
 | `value`        | **yes**  | the single target value all claiming tweaks agree on, in the kind's domain                      |
 
-Because the shared block declares the **single value**, two claiming tweaks **cannot disagree by
-construction.** Two tweaks wanting _different_ values on one address is impossible to express: you would
-have to declare two shared entries on one address, which is a duplicate-address build error naming both.
+Because the shared block declares the **single value**, two claiming tweaks **cannot disagree by construction.** Two tweaks wanting _different_ values on one address is impossible to express: you would have to declare two shared entries on one address, which is a duplicate-address build error naming both.
 
 ### 9.2 Referencing it from tweaks
 
@@ -1029,8 +866,7 @@ options:
     values: { telemetry: unclaimed }
 ```
 
-`claim`/`unclaimed` must be **explicit** in every option: omission is a build error
-(`SharedNotExplicit`, §16), so sharing is always a visible decision.
+`claim`/`unclaimed` must be **explicit** in every option: omission is a build error (`SharedNotExplicit`, §16), so sharing is always a visible decision.
 
 ### 9.3 The claim/release lifecycle (runtime)
 
@@ -1041,14 +877,11 @@ There is one engine-level, machine-stamped, atomically-written **claims record**
 - **Release** (any transition whose target does not claim): the claimant is removed; while other claimants remain, the value is left alone and the releasing tweak reports _"held by \<tweaks\>"_ as info, not failure.
 - **Last release:** drive the value back to the captured original, verify, and release the record: a verified restore (ADR-0002). The drive runs at the higher of `restore_level` and the releasing tweak's own route under the current corpus, through the normal route (the broker for `ti`). So a block one tweak claimed at `ti` goes back at `ti` even when an `admin`-floor tweak releases last, and a corpus update that routes the block higher is honoured too.
 
-Shared-referenced effects appear in **no per-tweak snapshot**: their return path is exclusively the
-claims record, so two tweaks' snapshots can never fight over one address.
+Shared-referenced effects appear in **no per-tweak snapshot**: their return path is exclusively the claims record, so two tweaks' snapshots can never fight over one address.
 
 ### 9.4 The distinctness rule: a shared claim can't be the sole distinguisher
 
-Because a claimed shared value can be held by **another** tweak too, it can never be the **only** thing
-that distinguishes two of a tweak's own options. Two options that differ _only_ by a shared claim are a
-build error (`SharedOnlyDistinguisher`, §16). **Always pair a shared effect with a non-shared one:**
+Because a claimed shared value can be held by **another** tweak too, it can never be the **only** thing that distinguishes two of a tweak's own options. Two options that differ _only_ by a shared claim are a build error (`SharedOnlyDistinguisher`, §16). **Always pair a shared effect with a non-shared one:**
 
 ```yaml
 effects:
@@ -1063,14 +896,11 @@ options:
     values: { demo_marker: 0, shared_ref: unclaimed }
 ```
 
-Also note: an option whose _only_ effect is an `unclaimed` shared reference has **zero** detectable
-signal (unclaimed asserts nothing), so it fails detectability (`NotDetectable`, §16): another reason to
-pair shared with a real Setting.
+Also note: an option whose _only_ effect is an `unclaimed` shared reference has **zero** detectable signal (unclaimed asserts nothing), so it fails detectability (`NotDetectable`, §16): another reason to pair shared with a real Setting.
 
 ### 9.5 Full two-tweak shared example
 
-Two independent tweaks claiming one corpus-level shared setting, each with its own non-shared marker
-:
+Two independent tweaks claiming one corpus-level shared setting, each with its own non-shared marker :
 
 ```yaml
 shared:
@@ -1118,8 +948,7 @@ tweaks:
 
 ## 10. Windows version scoping
 
-`windows:` scopes applicability by Windows build. Any field is optional; omitted = unconstrained; the
-axes **AND** together (spec §6.6).
+`windows:` scopes applicability by Windows build. Any field is optional; omitted = unconstrained; the axes **AND** together (spec §6.6).
 
 ```yaml
 windows:
@@ -1130,15 +959,12 @@ windows:
 
 ### 10.1 The `products` axis
 
-`products` is a **set** of product ids; the machine matches if it is in **any** listed product's build
-range (spec §6.6):
+`products` is a **set** of product ids; the machine matches if it is in **any** listed product's build range (spec §6.6):
 
 - `10` = builds `10240..19045` (Windows 10).
 - `11` = builds `>=22000` (Windows 11).
 
-Only `10` and `11` are valid product ids; any other is a build error (`{n} is not a supported windows
-product: use 10 or 11`). `products: [10, 11]` means "Windows 10 or 11": effectively all supported
-builds.
+Only `10` and `11` are valid product ids; any other is a build error (`{n} is not a supported windows product: use 10 or 11`). `products: [10, 11]` means "Windows 10 or 11": effectively all supported builds.
 
 ### 10.2 The `build` axis: the expression grammar
 
@@ -1151,8 +977,7 @@ builds.
 | `<=N`  | build N or older                  | `build: "<=19045"`      |
 | `A..B` | builds A through B, **inclusive** | `build: "22621..26100"` |
 
-Any other string is a build error (`{raw} is not a valid windows build expression: use N, >=N, <=N, or
-A..B`). Quote expressions containing `>`/`<` so YAML does not misparse them.
+Any other string is a build error (`{raw} is not a valid windows build expression: use N, >=N, <=N, or A..B`). Quote expressions containing `>`/`<` so YAML does not misparse them.
 
 ### 10.3 The `revision` axis: not supported yet
 
@@ -1198,10 +1023,7 @@ effects:
     windows: { build: ">=22621" } # this effect only exists on 22621+
 ```
 
-**Per-option-value level**: a single value inside an option's `values:` map, written as the two-key map
-`{ value: <literal>, windows: {...} }`. This is the **only** value form that is a map with a `value`
-key: it cannot collide with the `{ literal: … }` escape (whose only key is `literal`) or with bare
-keywords:
+**Per-option-value level**: a single value inside an option's `values:` map, written as the two-key map `{ value: <literal>, windows: {...} }`. This is the **only** value form that is a map with a `value` key: it cannot collide with the `{ literal: … }` escape (whose only key is `literal`) or with bare keywords:
 
 ```yaml
 options:
@@ -1210,9 +1032,7 @@ options:
       some_effect: { value: 1, windows: { build: ">=26100" } }
 ```
 
-Per-option-value scoping applies to **Setting, Shared, and Action** values alike. The `value:` key holds
-whatever that effect's option value normally is (a literal for a Setting, or the bare keyword `run` /
-`claim` / `unclaimed` for an Action / Shared effect) and `windows:` scopes it:
+Per-option-value scoping applies to **Setting, Shared, and Action** values alike. The `value:` key holds whatever that effect's option value normally is (a literal for a Setting, or the bare keyword `run` / `claim` / `unclaimed` for an Action / Shared effect) and `windows:` scopes it:
 
 ```yaml
 values:
@@ -1221,23 +1041,17 @@ values:
   shared_ref: { value: claim, windows: { build: ">=26100" } } # ✅ scoped claim
 ```
 
-A value that this per-option-value scope excludes on a given build simply has **no answer** for that
-effect there: the option behaves as if it did not cover the effect on that build (which is why an
-always-in-scope companion effect matters for detectability: see §10.6 and §17.5).
+A value that this per-option-value scope excludes on a given build simply has **no answer** for that effect there: the option behaves as if it did not cover the effect on that build (which is why an always-in-scope companion effect matters for detectability: see §10.6 and §17.5).
 
 ### 10.5 What "excluded on this build" means
 
-A scoped-out effect is **excluded entirely** (not applied, not read, not counted toward detection) on
-builds its scope excludes. A tweak whose **entire applicable surface is empty** on the running build is
-left out of a release build's tweak list (debug and `test-build` builds show it **unavailable, with the reason**); it is _not_ an error, just genuinely inapplicable there.
+A scoped-out effect is **excluded entirely** (not applied, not read, not counted toward detection) on builds its scope excludes. A tweak whose **entire applicable surface is empty** on the running build is left out of a release build's tweak list (debug and `test-build` builds show it **unavailable, with the reason**); it is _not_ an error, just genuinely inapplicable there.
 
-The runtime reads the build via `RtlGetVersion` (never `GetVersionEx`) and the revision via the `UBR`
-registry value.
+The runtime reads the build via `RtlGetVersion` (never `GetVersionEx`) and the revision via the `UBR` registry value.
 
 ### 10.6 The support matrix: how the build guards quantify
 
-The build-time guards do **not** just check "does this parse". They **quantify over a fixed support
-matrix** of Windows builds (spec §10/§14):
+The build-time guards do **not** just check "does this parse". They **quantify over a fixed support matrix** of Windows builds (spec §10/§14):
 
 ```
 19045   (Windows 10 22H2)
@@ -1246,18 +1060,12 @@ matrix** of Windows builds (spec §10/§14):
 26100   (Windows 11 24H2)
 ```
 
-For **every** milestone, the validator computes each tweak's **applicable projection** (the effects and
-values in scope on that build) and runs the detectability and distinctness guards over it. This is why an
-option can pass on one build and fail on another:
+For **every** milestone, the validator computes each tweak's **applicable projection** (the effects and values in scope on that build) and runs the detectability and distinctness guards over it. This is why an option can pass on one build and fail on another:
 
-- If a per-option-value scope removes an option's only detectable value on build 22621, the option is
-  `NotDetectable` **on build 22621** even though it is fine on 26100.
-- The error message names the **first milestone** the failure was observed on. Fix the option, not each
-  build: each violation is reported once, deduped across the matrix.
+- If a per-option-value scope removes an option's only detectable value on build 22621, the option is `NotDetectable` **on build 22621** even though it is fine on 26100.
+- The error message names the **first milestone** the failure was observed on. Fix the option, not each build: each violation is reported once, deduped across the matrix.
 
-> ⚠️ **Design implication:** whenever you scope a value or effect, mentally walk all four milestones and
-> confirm each option still has a non-optional, detectable, non-shared value there. §17.5 works a scoped
-> example through the matrix.
+> ⚠️ **Design implication:** whenever you scope a value or effect, mentally walk all four milestones and confirm each option still has a non-optional, detectable, non-shared value there. §17.5 works a scoped example through the matrix.
 
 The guards are build-only, which is one reason `revision` is rejected at build (§10.3).
 
@@ -1265,9 +1073,7 @@ The guards are build-only, which is one reason `revision` is rejected at build (
 
 ## 11. Packed / field-addressed values
 
-Some registry values pack several independent knobs into one string, e.g.
-`DirectXUserGlobalSettings = "SwapEffectUpgradeEnable=1;VRROptimizeEnable=0;"`. A `registry` effect may
-address **one field** of such a value with `field` + `format` (spec §5.2):
+Some registry values pack several independent knobs into one string, e.g. `DirectXUserGlobalSettings = "SwapEffectUpgradeEnable=1;VRROptimizeEnable=0;"`. A `registry` effect may address **one field** of such a value with `field` + `format` (spec §5.2):
 
 ```yaml
 - id: packed_flag
@@ -1282,40 +1088,29 @@ address **one field** of such a value with `field` + `format` (spec §5.2):
 ```
 
 - `field`: the name of the sub-field this effect manages.
-- `format`: how the value is packed. **v1 ships exactly one format: `kv_semicolon`** (`Name=Value;`
-  pairs). Omitting `format` when `field` is set **defaults to `kv_semicolon`**.
+- `format`: how the value is packed. **v1 ships exactly one format: `kv_semicolon`** (`Name=Value;` pairs). Omitting `format` when `field` is set **defaults to `kv_semicolon`**.
 
 ### 11.1 The `kv_semicolon` format
 
-The live string is a series of `Name=Value;` segments: one per `;`, a single trailing `;` is the normal
-terminator. A segment that is not exactly one non-empty name + one value (a stray `;;`, a missing `=`, a
-doubled `=`) makes the **whole** parse fail: never a partial or guessed reading.
+The live string is a series of `Name=Value;` segments: one per `;`, a single trailing `;` is the normal terminator. A segment that is not exactly one non-empty name + one value (a stray `;;`, a missing `=`, a doubled `=`) makes the **whole** parse fail: never a partial or guessed reading.
 
 ### 11.2 Runtime behavior: upsert, order preserved
 
-- **apply/restore:** read the live string, parse it into fields, **upsert only the addressed field**, and
-  re-serialize: **preserving every other field and their original order**. A field write is a
-  read-modify-write cycle, serialized process-wide behind the registry kind's mutex so two tweaks writing
-  different fields of the _same_ value never race.
+- **apply/restore:** read the live string, parse it into fields, **upsert only the addressed field**, and re-serialize: **preserving every other field and their original order**. A field write is a read-modify-write cycle, serialized process-wide behind the registry kind's mutex so two tweaks writing different fields of the _same_ value never race.
 - **`absent` on a field** removes just that field, leaving the others untouched.
-- A live string the parser **cannot understand is a typed read error** → the tweak reads **Unknown**,
-  never a guess and never a destructive rewrite.
+- A live string the parser **cannot understand is a typed read error** → the tweak reads **Unknown**, never a guess and never a destructive rewrite.
 
 ### 11.3 Ownership: whole-value XOR field-addressed
 
-A packed value is **whole-owned XOR field-addressed**: never both, and each field is owned once
-(ADR-0006). The ownership guard groups by `(hive, path, name)` **ignoring** the field:
+A packed value is **whole-owned XOR field-addressed**: never both, and each field is owned once (ADR-0006). The ownership guard groups by `(hive, path, name)` **ignoring** the field:
 
-- ✅ Two effects addressing **different fields** of one value → fine (`SwapEffectUpgradeEnable` and
-  `VRROptimizeEnable`).
-- ❌ One effect addressing the **whole value** and another addressing a **field** of it → build error
-  (`DuplicateAddress`, mentioning the mix).
+- ✅ Two effects addressing **different fields** of one value → fine (`SwapEffectUpgradeEnable` and `VRROptimizeEnable`).
+- ❌ One effect addressing the **whole value** and another addressing a **field** of it → build error (`DuplicateAddress`, mentioning the mix).
 - ❌ Two effects addressing the **same field** → build error.
 
 ### 11.4 Option values for a field
 
-Option values for a packed field are plain literals in the **field's own terms**, or `absent` to remove
-the field:
+Option values for a packed field are plain literals in the **field's own terms**, or `absent` to remove the field:
 
 ```yaml
 options:
@@ -1361,8 +1156,7 @@ A `field`-addressed effect's `type` **must** be `REG_SZ` or `REG_EXPAND_SZ`; any
 
 ## 12. The Action contract
 
-Actions are the imperative escape hatch for free-form scripts that cannot be expressed as a declarative
-Setting (spec §7). Reach for a Setting first; an Action is a last resort.
+Actions are the imperative escape hatch for free-form scripts that cannot be expressed as a declarative Setting (spec §7). Reach for a Setting first; an Action is a last resort.
 
 ```yaml
 - id: marker_action
@@ -1388,8 +1182,7 @@ Setting (spec §7). Reach for a Setting first; an Action is a last resort.
 | `shell`     | **yes**  | `cmd` or `powershell`                                                                                                   |
 | `timeout`   | no       | seconds allowed for `apply` and `undo`, 1 to 1800; default 30                                                           |
 
-`undo`, `probe`, and `ephemeral` are **independent**: an action can carry any combination (subject to
-the ephemeral rule, §12.3).
+`undo`, `probe`, and `ephemeral` are **independent**: an action can carry any combination (subject to the ephemeral rule, §12.3).
 
 **`timeout`** bounds `apply` and `undo`; without it each gets 30 seconds. A `probe` always gets 30 seconds, so keep probes quick. Set it on anything that services Windows (DISM, `*-WindowsOptionalFeature`, `Remove-AppxProvisionedPackage`, `Set-WindowsReservedStorageState`) or installs through `winget`: those routinely run for minutes, and a timeout kills the script and every process it started, mid-operation. A value outside 1 to 1800 is a build error (`InvalidActionTimeout`, §16).
 
@@ -1407,15 +1200,13 @@ the ephemeral rule, §12.3).
 Results are the **exit code**, locale-independent, never parsed text (spec §7/§14):
 
 - `apply` / `undo`: **`0` = success**, non-zero = failure (a typed `ActionFailed(code)` error). A failure after the script started counts as a partial run, which the rollback reverses (§14.3).
-- `probe`: **`0` = present**, non-zero = absent. A probe that **cannot be run** (spawn failure, timeout)
-  is `Err`: "we could not tell" must **never** read as "absent".
+- `probe`: **`0` = present**, non-zero = absent. A probe that **cannot be run** (spawn failure, timeout) is `Err`: "we could not tell" must **never** read as "absent".
 
 Write your scripts to `exit 0` / `exit 1` explicitly for the state they report.
 
 ### 12.3 `ephemeral: true`: transient side-effects
 
-`ephemeral: true` marks an action whose effect is **transient** and changes no persistent state: flush
-DNS, restart Explorer, `gpupdate /force`:
+`ephemeral: true` marks an action whose effect is **transient** and changes no persistent state: flush DNS, restart Explorer, `gpupdate /force`:
 
 ```yaml
 - id: flush_dns
@@ -1425,11 +1216,8 @@ DNS, restart Explorer, `gpupdate /force`:
     shell: cmd
 ```
 
-- It runs on apply and takes **no `undo` and no `probe`.** Declaring either alongside `ephemeral: true`
-  is a build error (`EphemeralWithUndoOrProbe`, §16).
-- It is **exempt** from the reversibility and detectability computations: a transient side-effect leaves
-  no persistent state to detect and cannot be "reverted". An ephemeral action **never makes a tweak
-  one-way** (§14).
+- It runs on apply and takes **no `undo` and no `probe`.** Declaring either alongside `ephemeral: true` is a build error (`EphemeralWithUndoOrProbe`, §16).
+- It is **exempt** from the reversibility and detectability computations: a transient side-effect leaves no persistent state to detect and cannot be "reverted". An ephemeral action **never makes a tweak one-way** (§14).
 
 ### 12.4 The deciding question: does it need `undo`?
 
@@ -1438,8 +1226,7 @@ DNS, restart Explorer, `gpupdate /force`:
 > - **Yes** → it needs `undo` (or the tweak is honestly `reversible: false`, §14).
 > - **No** (it is transient) → mark it `ephemeral: true`.
 
-Never leave a persistent, breaking change with no `undo` while claiming `reversible: true`: the build
-computes the truth and rejects the lie (`ReversibilityMismatch`, §14/§16).
+Never leave a persistent, breaking change with no `undo` while claiming `reversible: true`: the build computes the truth and rejects the lie (`ReversibilityMismatch`, §14/§16).
 
 ### 12.5 `probe`: state-based, cached, present/absent
 
@@ -1459,13 +1246,9 @@ probe:
     equals: 0
 ```
 
-Use it when the action writes through some tool (`powercfg`, `bcdedit`) but the result lands in a
-registry value you can read back. A missing value, a missing key, and a value stored as something
-other than a DWORD all read as **not present**, which is the honest answer for a present/absent
-question. Only an unreadable key (access denied) surfaces as "cannot tell".
+Use it when the action writes through some tool (`powercfg`, `bcdedit`) but the result lands in a registry value you can read back. A missing value, a missing key, and a value stored as something other than a DWORD all read as **not present**, which is the honest answer for a present/absent question. Only an unreadable key (access denied) surfaces as "cannot tell".
 
-**Script**: everything else, and still the right answer for genuinely imperative checks: `powercfg`
-query parsing, DISM feature state, `auditpol`, CIM/WMI, process presence.
+**Script**: everything else, and still the right answer for genuinely imperative checks: `powercfg` query parsing, DISM feature state, `auditpol`, CIM/WMI, process presence.
 
 ```yaml
 probe: |
@@ -1477,10 +1260,7 @@ If you are writing a script whose whole body is one `Get-ItemProperty` compariso
 
 ### 12.6 Inline scripts only (no filed form in v1)
 
-`apply` and `undo` are **plain string bodies**: typically a YAML block scalar (`|`) for multi-line
-scripts, or a quoted one-liner. There is **no `apply: { file: scripts/x.ps1 }` filed-script form in
-the shipped schema**: writing a map there is a build error (`data did not match … EffectRaw`). Put the
-script body inline. (`probe` is the one field that also takes a map, for the `registry` form in §12.5.)
+`apply` and `undo` are **plain string bodies**: typically a YAML block scalar (`|`) for multi-line scripts, or a quoted one-liner. There is **no `apply: { file: scripts/x.ps1 }` filed-script form in the shipped schema**: writing a map there is a build error (`data did not match … EffectRaw`). Put the script body inline. (`probe` is the one field that also takes a map, for the `registry` form in §12.5.)
 
 > 📝 _Note for maintainers:_ spec §7 describes a filed-script form (`apply: { file: … }`, embedded by `build.rs`). The **shipped `ActionRaw` schema accepts only a string** (`apply: String`, `undo: Option<String>` in `src-tauri/src/tweaks/schema.rs`), so filed scripts are not available and the spec is wrong on this point. This guide documents the shipped behavior.
 
@@ -1492,19 +1272,11 @@ Three Windows traps have bitten scripts in this corpus. Windows PowerShell 5.1 r
 
 Whether an action can distinguish two options depends on `probe` **and** `undo` (spec §8.4/§10):
 
-- An action with **`probe` and `undo`** is a _reliable_ distinguisher: an option that **runs** it expects
-  the probe _present_; an option that **omits** it expects _absent_; apply drives the state, so the
-  expectation is **strict** and exactly one option matches. Two options may differ **solely** by such an
-  action: this is legal (`differ_only_by_undo_action_ok` is a passing fixture).
-- An action with **`probe` but no `undo`** is **not** a reliable sole distinguisher. The permanent
-  product of a one-way run is **Residue**: once it has run, the _omitting_ option also matches (the
-  Residue is tolerated). Two options that differ **only** by a no-undo action are a build error
-  (`ResidueOnlyDistinguisher`, §16). The active option discloses the lingering Residue as an info marker.
-- An action **without `probe`** contributes nothing to detection. Two options that differ only by
-  probe-less actions are a build error (`OptionsNotDetectablyDistinct`, §16).
+- An action with **`probe` and `undo`** is a _reliable_ distinguisher: an option that **runs** it expects the probe _present_; an option that **omits** it expects _absent_; apply drives the state, so the expectation is **strict** and exactly one option matches. Two options may differ **solely** by such an action: this is legal (`differ_only_by_undo_action_ok` is a passing fixture).
+- An action with **`probe` but no `undo`** is **not** a reliable sole distinguisher. The permanent product of a one-way run is **Residue**: once it has run, the _omitting_ option also matches (the Residue is tolerated). Two options that differ **only** by a no-undo action are a build error (`ResidueOnlyDistinguisher`, §16). The active option discloses the lingering Residue as an info marker.
+- An action **without `probe`** contributes nothing to detection. Two options that differ only by probe-less actions are a build error (`OptionsNotDetectablyDistinct`, §16).
 
-**Practical rule:** if two options must be told apart by an action, that action needs **both `probe` and
-`undo`**: otherwise give the options a non-shared, detectable **Setting** difference.
+**Practical rule:** if two options must be told apart by an action, that action needs **both `probe` and `undo`**: otherwise give the options a non-shared, detectable **Setting** difference.
 
 ### 12.8 Delete-tree: reserved, but not authorable in v1
 
@@ -1548,8 +1320,7 @@ The engine reserves one structural action, **delete-tree** (one-way unless the a
         demo_marker: 0
 ```
 
-Note "Skip" **omits** both actions (legal, omitted actions are not run) and relies on `demo_marker: 0`
-to stay detectable/distinct from "Run".
+Note "Skip" **omits** both actions (legal, omitted actions are not run) and relies on `demo_marker: 0` to stay detectable/distinct from "Run".
 
 A marker like `demo_marker` works here because the action's state (the example's own `ScriptMarker`) cannot exist without this tweak. When the action changes real machine state that may already be in place (a feature already off, an app never installed, a power setting already set), prefer detecting from that state: a per-user marker makes such a machine, and every other Windows account, read System Default even though the change is in effect. Author a single option that runs the action, or anchor the second option on a Setting that is part of the same machine state (for example `HibernateEnabled` next to `powercfg /hibernate off`). Apply leaves an already-present action alone (§12.5), so a marker costs honest detection, not a wrong revert.
 
@@ -1557,9 +1328,7 @@ A marker like `demo_marker` works here because the action's state (the example's
 
 ## 13. Elevation
 
-The app ships **unelevated** (`asInvoker`); Admin is **user-provided** (launch as admin, or the in-app
-**Elevate** relaunch), never silently acquired (ADR-0005). You declare a privilege level; the app never
-infers or escalates it.
+The app ships **unelevated** (`asInvoker`); Admin is **user-provided** (launch as admin, or the in-app **Elevate** relaunch), never silently acquired (ADR-0005). You declare a privilege level; the app never infers or escalates it.
 
 ### 13.1 The three levels
 
@@ -1572,8 +1341,7 @@ infers or escalates it.
 ### 13.2 The floor + per-effect escalation
 
 - A tweak declares an `elevation:` **floor** (required, §3).
-- An effect may declare its **own** `elevation:`; the effective level for that effect is
-  **`max(floor, step)`**, escalate-only, never lowered.
+- An effect may declare its **own** `elevation:`; the effective level for that effect is **`max(floor, step)`**, escalate-only, never lowered.
 
 ```yaml
 elevation: admin # floor for the whole tweak
@@ -1583,31 +1351,15 @@ effects:
     elevation: ti # this ONE effect escalates to TrustedInstaller
 ```
 
-> ⚠️ **An `action:` effect may never route to `ti`.** Nothing carries a script into a TrustedInstaller
-> child, so such an action could neither be applied nor undone. The build rejects it and names the
-> effect, whether the `ti` came from the tweak's floor or from the effect's own step. Express the
-> change as a typed effect (which does route to `ti`), or keep the action at `admin`.
+> ⚠️ **An `action:` effect may never route to `ti`.** Nothing carries a script into a TrustedInstaller child, so such an action could neither be applied nor undone. The build rejects it and names the effect, whether the `ti` came from the tweak's floor or from the effect's own step. Express the change as a typed effect (which does route to `ti`), or keep the action at `admin`.
 
 ### 13.3 The HKCU exception (and why)
 
-**A user-hive (HKCU) effect always runs in-process as the interactive user, regardless of the floor**,
-even inside a `ti` tweak. **Why:** if it ran in a TrustedInstaller child, every HKCU write, read-back,
-and detection would target the _wrong_ account's hive (SYSTEM's, or an elevated admin's), reporting green
-against a hive the user never sees (ADR-0005). The exception keeps per-user state landing in the real
-user's hive.
+**A user-hive (HKCU) effect always runs in-process as the interactive user, regardless of the floor**, even inside a `ti` tweak. **Why:** if it ran in a TrustedInstaller child, every HKCU write, read-back, and detection would target the _wrong_ account's hive (SYSTEM's, or an elevated admin's), reporting green against a hive the user never sees (ADR-0005). The exception keeps per-user state landing in the real user's hive.
 
-"Is this effect HKCU" is decided **structurally, per effect**, by looking at the address's own hive.
-Three shapes carry one and all three count: a plain `registry`/`registry_key` effect, a `shared:`
-effect (resolved through the corpus to the block's own setting), and a `DeleteTree` action (its
-`key:` carries a hive like any other address). A `script` action carries no address, so it is never
-HKCU by this rule; if your script touches per-user state, say so in review, because nothing can infer
-it. Nothing here depends on your `elevation:` floor.
+"Is this effect HKCU" is decided **structurally, per effect**, by looking at the address's own hive. Three shapes carry one and all three count: a plain `registry`/`registry_key` effect, a `shared:` effect (resolved through the corpus to the block's own setting), and a `DeleteTree` action (its `key:` carries a hive like any other address). A `script` action carries no address, so it is never HKCU by this rule; if your script touches per-user state, say so in review, because nothing can infer it. Nothing here depends on your `elevation:` floor.
 
-Relatedly, the **over-the-shoulder guard**. Ordinary UAC elevation by the same user keeps the same
-account, so HKCU is already the right hive and nothing is blocked. The guard exists for the case where
-a _different_ account's credentials elevated the app, which would make the app's HKCU that account's
-hive. On startup and on every scan the app compares its process token's user against the user who owns
-its own session (not the console session: under RDP those legitimately differ), and:
+Relatedly, the **over-the-shoulder guard**. Ordinary UAC elevation by the same user keeps the same account, so HKCU is already the right hive and nothing is blocked. The guard exists for the case where a _different_ account's credentials elevated the app, which would make the app's HKCU that account's hive. On startup and on every scan the app compares its process token's user against the user who owns its own session (not the console session: under RDP those legitimately differ), and:
 
 | guard result                  | what happens to tweaks that touch HKCU |
 | ----------------------------- | -------------------------------------- |
@@ -1615,19 +1367,12 @@ its own session (not the console session: under RDP those legitimately differ), 
 | the accounts differ           | disabled, "Different account"          |
 | neither SID nor name resolved | disabled, "Account unknown"            |
 
-Resolving the session owner's SID goes through a name lookup, which on a domain-joined machine with
-an unreachable DC (or an Entra-joined machine) can fail. When it does, the guard compares account
-names instead, which need no directory. Only when _both_ comparisons are impossible does it fall to
-"Account unknown".
+Resolving the session owner's SID goes through a name lookup, which on a domain-joined machine with an unreachable DC (or an Entra-joined machine) can fail. When it does, the guard compares account names instead, which need no directory. Only when _both_ comparisons are impossible does it fall to "Account unknown".
 
 Two points that matter when you author:
 
-- **The guard keys on the hive, not on `elevation:`.** An `elevation: admin` tweak that happens to
-  write one HKCU value is guarded exactly like an `elevation: user` one. You do not declare this and
-  cannot opt out of it; it follows from the addresses you wrote.
-- **An unreadable SID blocks too, and that is deliberate.** Refusing changes nothing on disk and tells
-  the user what to do. Proceeding could write a hive the user never meant, and apply's read-back of
-  that same hive would confirm it, so nothing would flag the mistake.
+- **The guard keys on the hive, not on `elevation:`.** An `elevation: admin` tweak that happens to write one HKCU value is guarded exactly like an `elevation: user` one. You do not declare this and cannot opt out of it; it follows from the addresses you wrote.
+- **An unreadable SID blocks too, and that is deliberate.** Refusing changes nothing on disk and tells the user what to do. Proceeding could write a hive the user never meant, and apply's read-back of that same hive would confirm it, so nothing would flag the mistake.
 
 ### 13.4 Choosing a level
 
@@ -1635,29 +1380,18 @@ Two points that matter when you author:
 - Machine settings requiring admin (most HKLM policy values, service start types) → `admin`.
 - TrustedInstaller-protected resources (WaaSMedic-class keys/tasks) → `ti`.
 
-Pick the **lowest** level that actually works, but the level is **trusted, not build-validated** (the
-privilege a resource needs is a property of the _machine_, not the tweak). A too-low declaration surfaces
-at apply time as a **named insufficient-elevation error** (abort + rollback), never a silent escalation.
-Two distinct failures are surfaced: _couldn't acquire the level_ (environmental, TI service unstartable,
-`SeDebugPrivilege` denied) vs. _acquired but access-denied_ (the declaration is genuinely too low; fix
-it).
+Pick the **lowest** level that actually works, but the level is **trusted, not build-validated** (the privilege a resource needs is a property of the _machine_, not the tweak). A too-low declaration surfaces at apply time as a **named insufficient-elevation error** (abort + rollback), never a silent escalation. Two distinct failures are surfaced: _couldn't acquire the level_ (environmental, TI service unstartable, `SeDebugPrivilege` denied) vs. _acquired but access-denied_ (the declaration is genuinely too low; fix it).
 
 ### 13.5 When the app is not elevated
 
-- **Reads run at whatever level the app currently has.** Most state is world-readable, so detection works
-  unelevated; TI-protected resources legitimately deny reads and read as **Unknown** with a
-  needs-elevation hint until the user elevates.
+- **Reads run at whatever level the app currently has.** Most state is world-readable, so detection works unelevated; TI-protected resources legitimately deny reads and read as **Unknown** with a needs-elevation hint until the user elevates.
 - A tweak is **disabled** in the UI (status still shown) when the highest level any of its effects runs at exceeds the current level, and enabled only after the user chooses to elevate. That level is the floor raised by any per-effect `elevation:` (§13.2); an HKCU effect counts as `user` whatever it declares (§13.3). It is also the permission level the tweak's row names, so the row always shows the level the apply will really use. Effects this build excludes through `windows:` (§6.6) are left out of it, exactly as the apply leaves them out. An `optional:` effect is counted even though a missing resource skips it at apply time: whether the resource exists is not known until the apply runs, and asking for one level too many is better than a row that promises to work and then refuses. The notice names the level the tweak needs. Elevation triggers an automatic full re-scan.
 - A tweak with **any** effect that runs at `ti` is also disabled, as "Not available on this PC", when the TrustedInstaller service is disabled or missing. Restarting as administrator cannot fix that, so the notice says what to change instead. You only see it once the app is elevated enough to reach that level: below that the tweak reads as needing elevation first, since restarting as administrator is the step either way. The check runs once per launch and is deliberately best effort: a service that is disabled or absent is reported, but if the SCM or the service cannot be opened for any other reason, the app assumes the path is fine and lets the apply report the real error rather than blocking a tweak that might work.
-- `elevation: user` tweaks need no elevation at either level, and elevating does not take them away.
-  If you ever see per-user tweaks disabled purely because the app is running as administrator, that is
-  a bug in the guard above, not the intended design.
+- `elevation: user` tweaks need no elevation at either level, and elevating does not take them away. If you ever see per-user tweaks disabled purely because the app is running as administrator, that is a bug in the guard above, not the intended design.
 
 ### 13.6 The one elevation build guard
 
-There is exactly one elevation-related build guard: **you cannot disable the `TrustedInstaller` service**
-via a typed Service effect (`TrustedInstallerDisabled`, §16): it would strand the app's own TI path.
-(Script contents are statically opaque, so this guard is honestly scoped to _typed_ effects.)
+There is exactly one elevation-related build guard: **you cannot disable the `TrustedInstaller` service** via a typed Service effect (`TrustedInstallerDisabled`, §16): it would strand the app's own TI path. (Script contents are statically opaque, so this guard is honestly scoped to _typed_ effects.)
 
 ### 13.7 Current limitation: which kinds actually route through `ti` today
 
@@ -1671,27 +1405,17 @@ via a typed Service effect (`TrustedInstallerDisabled`, §16): it would strand t
 
 ### 13.8 Declaration order decides how many elevated children you pay for
 
-A run of **consecutive** `ti` effects shares ONE elevated child. Acquiring TrustedInstaller is
-entirely a per-spawn cost (starting and polling the service, opening and verifying its process,
-cold-starting this binary again), so the difference between one run of twenty and twenty runs of one
-is the difference between paying that once and paying it twenty times.
+A run of **consecutive** `ti` effects shares ONE elevated child. Acquiring TrustedInstaller is entirely a per-spawn cost (starting and polling the service, opening and verifying its process, cold-starting this binary again), so the difference between one run of twenty and twenty runs of one is the difference between paying that once and paying it twenty times.
 
-Anything that is not a same-level brokerable Setting splits the run: an `admin` or `user` effect, a
-`shared` block, an `action`, and an HKCU effect (which §13.3 forces in-process as the interactive user
-regardless of the floor). So interleaving one `admin` effect between two `ti` effects costs two
-children rather than one.
+Anything that is not a same-level brokerable Setting splits the run: an `admin` or `user` effect, a `shared` block, an `action`, and an HKCU effect (which §13.3 forces in-process as the interactive user regardless of the floor). So interleaving one `admin` effect between two `ti` effects costs two children rather than one.
 
-This never reorders anything. Declaration order remains load-bearing and is preserved exactly; only
-_adjacent_ equals group. If your effects have an ordering requirement, keep declaring them in that
-order and grouping will follow it. If they do not, grouping the elevated ones together is free
-performance.
+This never reorders anything. Declaration order remains load-bearing and is preserved exactly; only _adjacent_ equals group. If your effects have an ordering requirement, keep declaring them in that order and grouping will follow it. If they do not, grouping the elevated ones together is free performance.
 
 ---
 
 ## 14. Reversibility
 
-`reversible` is a **computed** property that the build checks against your declared flag (spec §6.4). You
-must declare it, but you cannot lie about it.
+`reversible` is a **computed** property that the build checks against your declared flag (spec §6.4). You must declare it, but you cannot lie about it.
 
 ### 14.1 How it is computed
 
@@ -1702,8 +1426,7 @@ A tweak is **reversible** if and only if **every** effect on its surface is one 
 - an **Action with `undo`**, reverts cleanly, or
 - an **`ephemeral` Action**, exempt (transient, nothing to revert).
 
-A tweak is **one-way** (`reversible: false`) if it has **at least one non-ephemeral Action without
-`undo`**.
+A tweak is **one-way** (`reversible: false`) if it has **at least one non-ephemeral Action without `undo`**.
 
 ### 14.2 The build check
 
@@ -1713,8 +1436,7 @@ The build computes the true value and rejects a mismatch (`ReversibilityMismatch
 tweak `T` declares reversible: true but the computed value is false: reversible requires every effect to be a Setting, an undo-carrying Action, or an ephemeral Action
 ```
 
-Fix it by either **correcting the flag** (`reversible: false`) or **making the tweak reversible** (add
-`undo` to the offending action, or mark it `ephemeral` if it truly is transient).
+Fix it by either **correcting the flag** (`reversible: false`) or **making the tweak reversible** (add `undo` to the offending action, or mark it `ephemeral` if it truly is transient).
 
 ```yaml
 # ❌ WRONG: a no-undo, non-ephemeral action but reversible: true
@@ -1739,9 +1461,7 @@ effects:
 
 ### 14.3 What "Needs Attention" means at runtime
 
-A `reversible: false` tweak is **labelled one-way up front**, before apply. On restore, **everything else
-still reverts**: only the genuinely one-way action cannot, and it surfaces as **Needs Attention**
-(ADR-0001). "Partial" never means "nothing reverts."
+A `reversible: false` tweak is **labelled one-way up front**, before apply. On restore, **everything else still reverts**: only the genuinely one-way action cannot, and it surfaces as **Needs Attention** (ADR-0001). "Partial" never means "nothing reverts."
 
 **Five runtime outcomes set it**, all of them a state the app cannot verify or could not record: a rollback that cannot fully complete (a locked service, access denied), an elevated step whose outcome cannot be proven either way, a restore that does not fully verify, an app that stopped mid-apply, mid-rollback or mid-restore, and an operation that ended in a verified state but whose snapshot entry the app could not update afterwards (another program holding the file open, say), which is recorded then and there so the next launch does not mistake it for an unfinished change. In every case the snapshot is kept, never hidden.
 
@@ -1759,25 +1479,19 @@ Which marks an outcome settles depends on what it proved. A verified apply or re
 
 ## 15. Detectability & the status model
 
-Detection reads the live surface and compares it to your options. Understanding the statuses tells you
-what an author must guarantee.
+Detection reads the live surface and compares it to your options. Understanding the statuses tells you what an author must guarantee.
 
 ### 15.1 Detectability is typed
 
 - **Settings are always detectable** (read the address, compare).
-- **Actions are detectable iff they declare `probe`** (§12.5); a probe-less action contributes nothing to
-  detection.
-- **Shared** claims count as matching for every claiming option while any claim is held; an `unclaimed`
-  entry asserts nothing and is excluded from that option's detectable projection.
+- **Actions are detectable iff they declare `probe`** (§12.5); a probe-less action contributes nothing to detection.
+- **Shared** claims count as matching for every claiming option while any claim is held; an `unclaimed` entry asserts nothing and is excluded from that option's detectable projection.
 
-There is **no `skip_validation` flag** (§18): detectability is a structural property, not something you
-opt out of.
+There is **no `skip_validation` flag** (§18): detectability is a structural property, not something you opt out of.
 
 ### 15.2 How detection matches an option
 
-Detect reads each applicable, detectable, non-shared Setting once; maps a `Missing` optional through its
-`if_missing`; folds in probeable actions' cached present/absent; and counts claimed shared settings as
-matching. Then:
+Detect reads each applicable, detectable, non-shared Setting once; maps a `Missing` optional through its `if_missing`; folds in probeable actions' cached present/absent; and counts claimed shared settings as matching. Then:
 
 - **A matching option wins.** At most one option can match: guaranteed by the distinctness guard (§16).
 - **No match ⇒ System Default.**
@@ -1800,8 +1514,7 @@ From the author's point of view, here is what makes a tweak show each status:
 The distinctness and detectability guards (§16) guarantee, on **every** supported build, that:
 
 - every option has **≥1 non-optional detectable effect** (so it is always tellable-apart), and
-- **at most one option can match** (no two options are byte-identical, identical on their detectable
-  projection, distinguished only by a shared claim, or distinguished only by a no-undo action).
+- **at most one option can match** (no two options are byte-identical, identical on their detectable projection, distinguished only by a shared claim, or distinguished only by a no-undo action).
 
 If your corpus builds, these hold. §16 is where you turn when it does not build.
 
@@ -1809,8 +1522,7 @@ If your corpus builds, these hold. §16 is where you turn when it does not build
 
 ## 16. Build errors reference (all 30)
 
-`build.rs` runs three phases in order and stops at the first phase that fails, printing a framed report
-listing **every** error in that phase (you fix them all in one pass):
+`build.rs` runs three phases in order and stops at the first phase that fails, printing a framed report listing **every** error in that phase (you fix them all in one pass):
 
 1. **Load** (`schema.rs`): parse YAML, parse paths/literals/scopes. → `YAML LOAD FAILED`
 2. **Structural** (`validate_structural`): ownership, coverage, reversibility, etc. → `STRUCTURAL VALIDATION FAILED`
@@ -1818,9 +1530,7 @@ listing **every** error in that phase (you fix them all in one pass):
 
 App items run a fourth phase after these, `APP VALIDATION FAILED`, with its own two errors; see §20.6.
 
-Below is **every** build-error variant, the message you will see (paraphrased from the validator), what
-triggers it, **why** the rule exists, and a wrong→right fix. The 30 `ValidationError` variants are
-grouped by phase.
+Below is **every** build-error variant, the message you will see (paraphrased from the validator), what triggers it, **why** the rule exists, and a wrong→right fix. The 30 `ValidationError` variants are grouped by phase.
 
 ### Load-phase errors (6)
 
@@ -1828,10 +1538,7 @@ grouped by phase.
 
 > **Message:** `{file}: {message}`
 
-**Trigger:** the file is not valid YAML, uses an **unknown field** (`deny_unknown_fields`), or an effect
-has **zero or two kind keys** / a misspelled kind key (the untagged-enum message `data did not match any
-variant of untagged enum EffectRaw`). **Why:** a typo must never be silently ignored: it would compile
-to something you did not write.
+**Trigger:** the file is not valid YAML, uses an **unknown field** (`deny_unknown_fields`), or an effect has **zero or two kind keys** / a misspelled kind key (the untagged-enum message `data did not match any variant of untagged enum EffectRaw`). **Why:** a typo must never be silently ignored: it would compile to something you did not write.
 
 ```yaml
 # ❌ unknown field
@@ -1862,8 +1569,7 @@ The wrapped parse error is one of (spec §5.1):
 - `registry path "…" does not start with a supported hive: use HKLM or HKCU (short or long spelling)`
 - `` `format` only applies with `field`: add the `field` it packs, or drop `format` ``
 
-**Why:** exact, well-formed addresses are what the ownership guard and snapshot keys depend on; a
-trailing backslash was historically a real delete-the-wrong-thing hazard.
+**Why:** exact, well-formed addresses are what the ownership guard and snapshot keys depend on; a trailing backslash was historically a real delete-the-wrong-thing hazard.
 
 ```yaml
 # ❌
@@ -1877,9 +1583,7 @@ registry: { key: 'HKLM\Software\X', name: N, type: REG_DWORD }
 
 > **Message:** ``shared `id`: {reason}``
 
-**Trigger:** a `shared:` entry's address is malformed, or its `value:` is not legal in the setting's
-domain. **Why:** a shared declaration is an address _and_ a value; both must be valid before any tweak
-claims it.
+**Trigger:** a `shared:` entry's address is malformed, or its `value:` is not legal in the setting's domain. **Why:** a shared declaration is an address _and_ a value; both must be valid before any tweak claims it.
 
 ```yaml
 # ❌ shared REG_DWORD with a non-numeric value
@@ -1910,11 +1614,7 @@ values: { demo_flag: absent, demo_service: manual }
 
 > **Message:** ``tweak `T` {context}: {parse error}``
 
-The wrapped parse error is a bad build/revision expression (`… is not a valid windows build expression:
-use N, >=N, <=N, or A..B`), an unknown product (`… is not a supported windows product: use 10 or 11`),
-or **revision without a pinned build** (`revision requires build to pin a single exact build …`). Legal
-at tweak, effect, or per-option-value level. **Why:** version scoping must be unambiguous, and a revision
-only means something inside one exact build (§10.3).
+The wrapped parse error is a bad build/revision expression (`… is not a valid windows build expression: use N, >=N, <=N, or A..B`), an unknown product (`… is not a supported windows product: use 10 or 11`), or **revision without a pinned build** (`revision requires build to pin a single exact build …`). Legal at tweak, effect, or per-option-value level. **Why:** version scoping must be unambiguous, and a revision only means something inside one exact build (§10.3).
 
 ```yaml
 # ❌
@@ -1932,9 +1632,7 @@ A well-formed `revision` still fails, at the structural phase, as `RevisionUnsup
 
 > **Message:** ``tweak `T` effect `E` if_missing: {reason}``
 
-**Trigger:** `if_missing:` holds a value that is not legal for the effect's kind (a service `if_missing`
-that is not a start type, etc.). **Why:** `if_missing` stands in for a real reading of this effect, so it
-must be a value the effect could actually have.
+**Trigger:** `if_missing:` holds a value that is not legal for the effect's kind (a service `if_missing` that is not a start type, etc.). **Why:** `if_missing` stands in for a real reading of this effect, so it must be a value the effect could actually have.
 
 ```yaml
 # ❌
@@ -1952,8 +1650,7 @@ must be a value the effect could actually have.
 
 > **Message:** ``tweak `T` effect `E` references shared `X`, which no `shared:` block declares: check for a typo or add the missing entry``
 
-**Trigger:** an effect's `shared: <id>` id does not exist anywhere in the corpus. **Why:** a dangling
-reference cannot be claimed; usually a typo or a missing `shared:` entry.
+**Trigger:** an effect's `shared: <id>` id does not exist anywhere in the corpus. **Why:** a dangling reference cannot be claimed; usually a typo or a missing `shared:` entry.
 
 ```yaml
 # ❌
@@ -1967,10 +1664,7 @@ effects: [{ id: r, shared: telemetry_off }]
 
 > **Message:** `{address} is claimed by both {first} and {second}: merge them into one effect, reassign one to a different address, or extract a corpus-level shared: entry if they must always agree`
 
-**Trigger:** two effects (in the same or different tweaks), an effect and a `shared:` declaration, or two
-`shared:` declarations claim the **same** address, including a whole-value-vs-field mix on one packed
-value, and counting all owners across the corpus. **Why:** one address, one owner: dual ownership breaks
-tweaks on revert (ADR-0006, §9). With three colliding owners you get **one error per extra owner**.
+**Trigger:** two effects (in the same or different tweaks), an effect and a `shared:` declaration, or two `shared:` declarations claim the **same** address, including a whole-value-vs-field mix on one packed value, and counting all owners across the corpus. **Why:** one address, one owner: dual ownership breaks tweaks on revert (ADR-0006, §9). With three colliding owners you get **one error per extra owner**.
 
 Addresses compare the way Windows does: registry paths and value names, service names, and task paths ignore case, so `HKLM\SOFTWARE\X` and `HKLM\Software\x` are one address. A registry value or key that one tweak (or a `shared:` entry) owns **inside another tweak's `registry_key` path** is also a collision, reported with the address `… (inside registry key …)`: driving that key `absent` would delete it. Effects of the same tweak may nest, except a value beneath a key the tweak can drive `absent` (`ValueBeneathOwnDeletableKey`).
 
@@ -1987,8 +1681,7 @@ Addresses compare the way Windows does: registry paths and value names, service 
 
 > **Message:** ``shared id `X` is declared more than once: shared ids must be unique corpus-wide; rename one of the declarations``
 
-**Trigger:** two `shared:` entries (anywhere in the corpus) use the same id. **Why:** the id must
-uniquely resolve; it is checked corpus-wide because `shared:` blocks from all files merge (§2).
+**Trigger:** two `shared:` entries (anywhere in the corpus) use the same id. **Why:** the id must uniquely resolve; it is checked corpus-wide because `shared:` blocks from all files merge (§2).
 
 #### 10. `NonCanonicalKind`: a raw registry effect reaching a service/task's storage
 
@@ -1996,9 +1689,7 @@ uniquely resolve; it is checked corpus-wide because `shared:` blocks from all fi
 
 `{owner}` is ``tweak `T` effect `E` `` or ``shared `S` ``.
 
-**Trigger:** an HKLM `registry` effect or `shared:` entry whose value is a service's `…\Services\<name>\Start` or `…\Services\<name>\DelayedAutostart`, or whose key
-is under the Task Scheduler storage tree (`…\Schedule\TaskCache\…`). **Why:** those states have canonical
-kinds; reaching them raw would let ownership be dodged via a second address space (ADR-0006).
+**Trigger:** an HKLM `registry` effect or `shared:` entry whose value is a service's `…\Services\<name>\Start` or `…\Services\<name>\DelayedAutostart`, or whose key is under the Task Scheduler storage tree (`…\Schedule\TaskCache\…`). **Why:** those states have canonical kinds; reaching them raw would let ownership be dodged via a second address space (ADR-0006).
 
 ```yaml
 # ❌
@@ -2011,8 +1702,7 @@ service: { name: wuauserv }
 
 > **Message:** ``tweak `T` option `O` does not cover effect `E`: every option must supply a value for every Setting effect on the surface``
 
-**Trigger:** an option's `values:` has no entry for one of the tweak's Setting effects. **Why:** the
-coverage rule (§7.1) is what prevents stranded state.
+**Trigger:** an option's `values:` has no entry for one of the tweak's Setting effects. **Why:** the coverage rule (§7.1) is what prevents stranded state.
 
 ```yaml
 # ❌ "Off" omits demo_service
@@ -2026,8 +1716,7 @@ options:
 
 > **Message:** ``tweak `T` option `O` does not explicitly say `claim` or `unclaimed` for shared effect `E` ``
 
-**Trigger:** an option's `values:` does not name `claim`/`unclaimed` for a `shared` effect. **Why:**
-sharing must always be a visible decision, never implied by omission (§9.2).
+**Trigger:** an option's `values:` does not name `claim`/`unclaimed` for a `shared` effect. **Why:** sharing must always be a visible decision, never implied by omission (§9.2).
 
 ```yaml
 # ❌ "Off" omits the shared entry
@@ -2042,23 +1731,19 @@ options:
 
 > **Message:** ``tweak `T` declares reversible: {declared} but the computed value is {computed}: reversible requires every effect to be a Setting, an undo-carrying Action, or an ephemeral Action``
 
-**Trigger:** `reversible:` does not match what the effects actually support. **Why:** a one-way tweak
-must be labelled honestly, before apply (§14). Fix the flag, add an `undo`, or mark the action
-`ephemeral`.
+**Trigger:** `reversible:` does not match what the effects actually support. **Why:** a one-way tweak must be labelled honestly, before apply (§14). Fix the flag, add an `undo`, or mark the action `ephemeral`.
 
 #### 14. `TrustedInstallerDisabled`: a typed effect disables TrustedInstaller
 
 > **Message:** `{owner} disables the TrustedInstaller service via a typed effect: this would strand the app's own TI elevation path`
 
-**Trigger:** a `service: { name: TrustedInstaller }` effect that any option drives to `disabled`, or a `shared:` entry for that service whose `value` is `disabled`.
-**Why:** the app's own TI elevation depends on starting that service (§13.6, ADR-0005).
+**Trigger:** a `service: { name: TrustedInstaller }` effect that any option drives to `disabled`, or a `shared:` entry for that service whose `value` is `disabled`. **Why:** the app's own TI elevation depends on starting that service (§13.6, ADR-0005).
 
 #### 15. `IfMissingWithoutOptional`: `if_missing` on a non-optional effect
 
 > **Message:** ``tweak `T` effect `E` declares if_missing without optional: true; add `optional: true`, or drop if_missing``
 
-**Trigger:** an effect has `if_missing:` but not `optional: true`. **Why:** a non-optional effect never
-reads `Missing` (it errors instead), so `if_missing` there is dead authoring (§8.3).
+**Trigger:** an effect has `if_missing:` but not `optional: true`. **Why:** a non-optional effect never reads `Missing` (it errors instead), so `if_missing` there is dead authoring (§8.3).
 
 ```yaml
 # ❌
@@ -2076,9 +1761,7 @@ reads `Missing` (it errors instead), so `if_missing` there is dead authoring (§
 
 > **Message:** ``tweak `T` effect `E` is ephemeral but declares undo/probe: an ephemeral action takes neither (spec §7)``
 
-**Trigger:** an action with `ephemeral: true` also has `undo:` or `probe:`. **Why:** an ephemeral action
-is _exempt_ from reversibility/detectability: carrying either would let the engine call `undo`/`probe`
-on an action those computations never accounted for (§12.3).
+**Trigger:** an action with `ephemeral: true` also has `undo:` or `probe:`. **Why:** an ephemeral action is _exempt_ from reversibility/detectability: carrying either would let the engine call `undo`/`probe` on an action those computations never accounted for (§12.3).
 
 ```yaml
 # ❌
@@ -2184,17 +1867,13 @@ effects:
 
 ### Semantic-phase errors (5): quantified per support-matrix milestone
 
-These run **per Windows build** in the support matrix (`19045`, `22621`, `22631`, `26100`), over each
-milestone's applicable projection. The message names the **first** build the failure was seen on; fix the
-option/pair, not each build (§10.6).
+These run **per Windows build** in the support matrix (`19045`, `22621`, `22631`, `26100`), over each milestone's applicable projection. The message names the **first** build the failure was seen on; fix the option/pair, not each build (§10.6).
 
 #### 26. `NotDetectable`: an option has no non-optional detectable effect on some build
 
 > **Message:** ``tweak `T` option `O` has no non-optional detectable effect on Windows build {N}: every option must stay distinguishable without effects that may read Missing``
 
-**Trigger:** on build N, this option's only distinguishing effects are optional (may read `Missing`),
-probe-less actions, or an `unclaimed`/scoped-out value: nothing reliably detectable remains. **Why:** an
-option you cannot detect is an option the user can never see as active (§8.5, §15).
+**Trigger:** on build N, this option's only distinguishing effects are optional (may read `Missing`), probe-less actions, or an `unclaimed`/scoped-out value: nothing reliably detectable remains. **Why:** an option you cannot detect is an option the user can never see as active (§8.5, §15).
 
 ```yaml
 # ❌ the only effect is optional, or is version-scoped out on this build for this option
@@ -2205,8 +1884,7 @@ option you cannot detect is an option the user can never see as active (§8.5, �
 
 > **Message:** ``tweak `T` options `A` and `B` are byte-identical on Windows build {N}: merge them or give one a distinct value``
 
-**Trigger:** on build N, two options have the _same_ value for every applicable effect. **Why:** two
-identical options are one option; the user could never land distinctly on either.
+**Trigger:** on build N, two options have the _same_ value for every applicable effect. **Why:** two identical options are one option; the user could never land distinctly on either.
 
 Only what detection compares counts: two values that differ only in their per-option-value `windows:` scope are the same value on any build where both are in scope.
 
@@ -2219,8 +1897,7 @@ Only what detection compares counts: two values that differ only in their per-op
 
 > **Message:** ``tweak `T` options `A` and `B` are identical on their detectable projection on Windows build {N}: they differ only by effects detection cannot observe (e.g. a probe-less Action)``
 
-**Trigger:** two options differ, but only on **probe-less actions**: nothing `detect()` can read.
-**Why:** if detection cannot tell two options apart, "which one is active?" has no answer (§12.7).
+**Trigger:** two options differ, but only on **probe-less actions**: nothing `detect()` can read. **Why:** if detection cannot tell two options apart, "which one is active?" has no answer (§12.7).
 
 ```yaml
 # ❌ On runs a probe-less action, Off omits it; nothing else differs
@@ -2231,9 +1908,7 @@ Only what detection compares counts: two values that differ only in their per-op
 
 > **Message:** ``tweak `T` options `A` and `B` differ only by a shared effect on Windows build {N}: a claimed shared value can be held by another tweak too, so it cannot be the sole distinguisher``
 
-**Trigger:** the only difference between two options is a `shared` effect's `claim`/`unclaimed`. **Why:**
-a shared value can be held by another tweak, so it cannot reliably tell _this_ tweak's options apart
-(§9.4).
+**Trigger:** the only difference between two options is a `shared` effect's `claim`/`unclaimed`. **Why:** a shared value can be held by another tweak, so it cannot reliably tell _this_ tweak's options apart (§9.4).
 
 ```yaml
 # ❌ On: shared_ref claim; Off: shared_ref unclaimed; nothing else differs
@@ -2244,10 +1919,7 @@ a shared value can be held by another tweak, so it cannot reliably tell _this_ t
 
 > **Message:** ``tweak `T` options `A` and `B` have no reliable distinguisher on Windows build {N}: add a Setting or an undo-carrying probeable Action that differs between them; a no-undo Action's Residue lets the omitting option match too once it has run``
 
-**Trigger:** every differing effect between two options is a no-undo (or probe-less, or shared) effect:
-none reliably keeps at most one option matching once the state is reached. **Why:** a one-way action's
-permanent Residue is tolerated by the omitting option, so both would match after it runs (§12.7). A
-**probe + undo** action _is_ reliable; a no-undo one is not.
+**Trigger:** every differing effect between two options is a no-undo (or probe-less, or shared) effect: none reliably keeps at most one option matching once the state is reached. **Why:** a one-way action's permanent Residue is tolerated by the omitting option, so both would match after it runs (§12.7). A **probe + undo** action _is_ reliable; a no-undo one is not.
 
 ```yaml
 # ❌ On runs a probeable but no-undo action; Off omits it; nothing else differs
@@ -2258,8 +1930,7 @@ permanent Residue is tolerated by the omitting option, so both would match after
 
 ## 17. Complete worked examples
 
-These walk a complete tweak end-to-end for each shape, plus a couple of harder composed cases. Each is
-schema-valid against the shipped validator.
+These walk a complete tweak end-to-end for each shape, plus a couple of harder composed cases. Each is schema-valid against the shipped validator.
 
 ### 17.1 Registry tri-state (a value and its absence)
 
@@ -2280,8 +1951,7 @@ schema-valid against the shipped validator.
       values: { demo_flag: absent } # delete DemoFlag entirely
 ```
 
-Two options, both valuing the one Setting, differing on a detectable value → valid. UI: a segmented switch of
-Enabled / Disabled, with neither selected while System Default is the live state.
+Two options, both valuing the one Setting, differing on a detectable value → valid. UI: a segmented switch of Enabled / Disabled, with neither selected while System Default is the live state.
 
 ### 17.2 Service + task with presence (optional / if_missing)
 
@@ -2310,9 +1980,7 @@ Enabled / Disabled, with neither selected while System Default is the live state
       values: { demo_marker: 0, demo_service: disabled, demo_task: disabled }
 ```
 
-Note the marker: without it, on a machine lacking the service _and_ task, both options would map through
-`if_missing: disabled` and become indistinguishable → `NotDetectable`. The marker is the non-optional
-distinguisher (§8.5).
+Note the marker: without it, on a machine lacking the service _and_ task, both options would map through `if_missing: disabled` and become indistinguishable → `NotDetectable`. The marker is the non-optional distinguisher (§8.5).
 
 ### 17.3 Hosts + firewall presence
 
@@ -2341,15 +2009,11 @@ distinguisher (§8.5).
       values: { block_host: absent, block_rule: absent }
 ```
 
-Both are presence kinds → `present`/`absent`. Both options value both effects and differ on detectable
-presence → valid.
+Both are presence kinds → `present`/`absent`. Both options value both effects and differ on detectable presence → valid.
 
 ### 17.4 Action with undo+probe plus a separate ephemeral
 
-See §12.9 for the full `example_action`. Key points: the undo-carrying probeable action is a legal sole
-distinguisher, but this tweak _also_ carries a `demo_marker` Setting so it does not need to rely on that;
-the ephemeral `flush_dns` is exempt from reversibility/detectability; the "Skip" option legally omits
-both actions.
+See §12.9 for the full `example_action`. Key points: the undo-carrying probeable action is a legal sole distinguisher, but this tweak _also_ carries a `demo_marker` Setting so it does not need to rely on that; the ephemeral `flush_dns` is exempt from reversibility/detectability; the "Skip" option legally omits both actions.
 
 ### 17.5 A Windows-scoped tweak walked through the matrix
 
@@ -2373,12 +2037,9 @@ Tweak-level scope makes a whole tweak apply only on 24H2+:
       values: { modern_flag: 0 }
 ```
 
-Walking the support matrix: on `19045`, `22621`, `22631` the tweak's applicable surface is **empty** →
-the tweak is **skipped** (not listed in a release build, unavailable in a debug build; not an error). On `26100` it applies, and both options
-differ on the detectable `modern_flag` → valid.
+Walking the support matrix: on `19045`, `22621`, `22631` the tweak's applicable surface is **empty** → the tweak is **skipped** (not listed in a release build, unavailable in a debug build; not an error). On `26100` it applies, and both options differ on the detectable `modern_flag` → valid.
 
-Now a harder composed case mixing all three scoping levels with an always-in-scope base marker (so no
-option is ever stranded, cf. §10.6):
+Now a harder composed case mixing all three scoping levels with an always-in-scope base marker (so no option is ever stranded, cf. §10.6):
 
 ```yaml
 - id: scoped_composed
@@ -2407,26 +2068,21 @@ option is ever stranded, cf. §10.6):
 
 Matrix check:
 
-- **19045:** `modern` (effect-scoped `>=22621`) is out → surface = `[base]`. On: `base:1`, Off: `base:0`.
-  Distinct on a Setting, both detectable. ✅
-- **22621 / 22631:** surface = `[base, modern]`. On's `modern` value is per-value-scoped `>=26100` → **no
-  answer** here; Off's `modern` = 0. On and Off differ on `base` (a Setting) → distinct; both detectable
-  via `base`. ✅
+- **19045:** `modern` (effect-scoped `>=22621`) is out → surface = `[base]`. On: `base:1`, Off: `base:0`. Distinct on a Setting, both detectable. ✅
+- **22621 / 22631:** surface = `[base, modern]`. On's `modern` value is per-value-scoped `>=26100` → **no answer** here; Off's `modern` = 0. On and Off differ on `base` (a Setting) → distinct; both detectable via `base`. ✅
 - **26100:** On: `base:1, modern:1`; Off: `base:0, modern:0`. Distinct, detectable. ✅
 
 Every milestone passes because `base` is always the reliable, non-optional distinguisher.
 
 ### 17.6 A packed field pair
 
-See §11.5 for `example_packed_field`. The packed REG_SZ `DemoPacked` is field-addressed at `DemoFlag`;
-the two options write `"1"`/`"0"` into just that field, preserving any other fields in the value.
+See §11.5 for `example_packed_field`. The packed REG_SZ `DemoPacked` is field-addressed at `DemoFlag`; the two options write `"1"`/`"0"` into just that field, preserving any other fields in the value.
 
 ---
 
 ## 18. What is gone from the old schema
 
-The redesign deleted the option-centric schema wholesale. If you saw the old MagicX schema (or any
-option-centric tool), here is what no longer exists and what replaces it:
+The redesign deleted the option-centric schema wholesale. If you saw the old MagicX schema (or any option-centric tool), here is what no longer exists and what replaces it:
 
 | gone                                                                                    | replaced by                                                                                     |
 | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -2442,9 +2098,7 @@ option-centric tool), here is what no longer exists and what replaces it:
 | `.reg` import / `-` delete spellings                                                    | the YAML schema is the single source of truth (§5.3)                                            |
 | per-tweak `category:`                                                                   | category declared **once per file** (§2.1)                                                      |
 
-There is **no mechanical converter.** If you are porting an old tweak, re-author it from scratch against
-this guide. The old content defects (undetectable tweaks, colliding owners, lying reversibility) are
-_meant_ to die in the rewrite: the build guards (§16) will not let them through.
+There is **no mechanical converter.** If you are porting an old tweak, re-author it from scratch against this guide. The old content defects (undetectable tweaks, colliding owners, lying reversibility) are _meant_ to die in the rewrite: the build guards (§16) will not let them through.
 
 ---
 
@@ -2455,8 +2109,7 @@ Run through this before you commit a tweak.
 ### Structure
 
 - ✅ One `category:` per file (id, name, icon, description). ❌ No per-tweak `category`.
-- ✅ Each tweak has `id`, `name`, `description`, `risk_level`, `elevation`, `reversible`, `effects`,
-  `options`. ❌ Never omit a required field.
+- ✅ Each tweak has `id`, `name`, `description`, `risk_level`, `elevation`, `reversible`, `effects`, `options`. ❌ Never omit a required field.
 - ✅ Each effect has an `id` + **exactly one** kind key. ❌ Never zero or two kind keys.
 
 ### Effects & options
@@ -2464,16 +2117,13 @@ Run through this before you commit a tweak.
 - ✅ Every option supplies a value for **every Setting effect** (coverage, §7.1).
 - ✅ Every option says **`claim`/`unclaimed`** for each `shared` effect (§9.2).
 - ✅ Action entries are `run` **or omitted**: never a made-up keyword.
-- ✅ Every option has **≥1 non-optional, detectable, non-shared** distinguishing value on **every**
-  support-matrix build (§8.5, §15).
-- ❌ Don't let two options differ **only** by an optional effect, a shared claim, a probe-less action, or
-  a **no-undo** action (§16 semantic errors).
+- ✅ Every option has **≥1 non-optional, detectable, non-shared** distinguishing value on **every** support-matrix build (§8.5, §15).
+- ❌ Don't let two options differ **only** by an optional effect, a shared claim, a probe-less action, or a **no-undo** action (§16 semantic errors).
 
 ### Values
 
 - ✅ Use the exact `.reg` type name (`REG_DWORD`, …) and the right literal shape (§5).
-- ✅ Deletion is the **`absent`** keyword; `present` only on presence kinds. ❌ Never `null`/omitted as a
-  delete (§6).
+- ✅ Deletion is the **`absent`** keyword; `present` only on presence kinds. ❌ Never `null`/omitted as a delete (§6).
 - ✅ Quote large `REG_QWORD`s (above `i64::MAX`) as strings (§5.1).
 - ✅ `REG_MULTI_SZ` is a YAML **list**; `[]` clears it.
 - ✅ Use `{ literal: absent }` only when you truly need the string content "absent".
@@ -2481,31 +2131,24 @@ Run through this before you commit a tweak.
 ### Addresses & ownership
 
 - ✅ HKLM/HKCU only; no leading/trailing/doubled backslash; no forward slash (§4.1).
-- ✅ One address, one owner: use `shared:` for genuine cross-tweak sharing (§9). ❌ Never two effects on
-  one address, unless their Windows scopes never overlap (§16, `DuplicateAddress`).
+- ✅ One address, one owner: use `shared:` for genuine cross-tweak sharing (§9). ❌ Never two effects on one address, unless their Windows scopes never overlap (§16, `DuplicateAddress`).
 - ✅ Use the `service`/`task` kind: ❌ never reach a service/task through raw registry storage (§16 #10).
 - ✅ A packed value is whole-owned **XOR** field-addressed; each field owned once (§11.3).
 
 ### Presence, scoping, elevation, actions
 
 - ✅ `optional: true` for resources that may be absent; `if_missing` **requires** `optional` (§8).
-- ✅ `windows:` axes AND together; `revision` needs a **pinned exact** `build` (§10.3). Walk all four
-  milestones for scoped tweaks (§10.6).
-- ✅ Pick the **lowest working** `elevation`; HKCU always runs as the user (§13.3). ❌ Never disable
-  `TrustedInstaller` via a typed effect (§13.6).
-- ✅ `apply` + `shell` required on an action; `undo`/`probe` optional and independent. ❌ `ephemeral`
-  takes **no** `undo`/`probe` (§12.3). ✅ Scripts are **inline strings**: no filed form in v1 (§12.6).
+- ✅ `windows:` axes AND together; `revision` needs a **pinned exact** `build` (§10.3). Walk all four milestones for scoped tweaks (§10.6).
+- ✅ Pick the **lowest working** `elevation`; HKCU always runs as the user (§13.3). ❌ Never disable `TrustedInstaller` via a typed effect (§13.6).
+- ✅ `apply` + `shell` required on an action; `undo`/`probe` optional and independent. ❌ `ephemeral` takes **no** `undo`/`probe` (§12.3). ✅ Scripts are **inline strings**: no filed form in v1 (§12.6).
 
 ### Reversibility & honesty
 
-- ✅ `reversible` must equal the **computed** value: Settings/Shared/undo-actions/ephemeral-actions →
-  reversible; one non-ephemeral no-undo action → one-way (§14). ❌ Never declare a `reversible` you can't
-  back up.
+- ✅ `reversible` must equal the **computed** value: Settings/Shared/undo-actions/ephemeral-actions → reversible; one non-ephemeral no-undo action → one-way (§14). ❌ Never declare a `reversible` you can't back up.
 
 ### Before committing
 
-- ✅ Build the app (`cargo build` / `pnpm run validate`): the tweak validator runs at compile time and
-  must pass on every support-matrix build.
+- ✅ Build the app (`cargo build` / `pnpm run validate`): the tweak validator runs at compile time and must pass on every support-matrix build.
 - ✅ If it fails, find the error variant in §16, apply the wrong→right fix, and rebuild.
 
 ---
