@@ -19,12 +19,25 @@
     countLabel: string;
     appliedLabel: string;
     restoreTitle: string;
+    /** Show Restore all disabled, rather than hidden, when nothing is restorable. */
+    alwaysShowRestore?: boolean;
     empty: { icon: IconName; title: string; description: string };
     /** Page actions beside Restore all. */
     actions?: Snippet;
   }
 
-  let { title, description, tweaks, noun, countLabel, appliedLabel, restoreTitle, empty, actions }: Props = $props();
+  let {
+    title,
+    description,
+    tweaks,
+    noun,
+    countLabel,
+    appliedLabel,
+    restoreTitle,
+    alwaysShowRestore = false,
+    empty,
+    actions,
+  }: Props = $props();
 
   const filteredTweaks = $derived(tweaks.filter((t) => pageFilterStore.passes(t.definition.id)));
   const restorable = $derived(tweaks.filter(canRestore));
@@ -39,7 +52,7 @@
     ]}
   />
   <div class="ml-auto flex flex-wrap gap-2">
-    {#if restorable.length > 0}
+    {#if alwaysShowRestore || restorable.length > 0}
       <RestoreAllButton title={restoreTitle} tweaks={restorable} />
     {/if}
     {@render actions?.()}

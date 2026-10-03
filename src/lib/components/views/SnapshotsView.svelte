@@ -11,6 +11,7 @@
   countLabel="with snapshots"
   appliedLabel="currently applied"
   restoreTitle="Restore all snapshots?"
+  alwaysShowRestore
   empty={{
     icon: "mdi:backup-restore",
     title: "No snapshots yet",
