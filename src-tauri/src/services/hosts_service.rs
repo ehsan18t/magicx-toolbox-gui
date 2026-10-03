@@ -11,20 +11,17 @@ use std::sync::Mutex;
 
 use windows_sys::core::PWSTR;
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, LocalFree, ERROR_LOCK_VIOLATION, ERROR_NOT_ALL_ASSIGNED,
-    ERROR_SHARING_VIOLATION, HANDLE, LUID,
+    GetLastError, LocalFree, ERROR_LOCK_VIOLATION, ERROR_SHARING_VIOLATION,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW,
     SetNamedSecurityInfoW, SDDL_REVISION_1, SE_FILE_OBJECT,
 };
 use windows_sys::Win32::Security::{
-    AdjustTokenPrivileges, EqualSid, LookupPrivilegeValueW, ACL, DACL_SECURITY_INFORMATION,
-    LUID_AND_ATTRIBUTES, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
-    SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
+    EqualSid, ACL, DACL_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+    PSID,
 };
 use windows_sys::Win32::Storage::FileSystem::{ReplaceFileW, REPLACEFILE_WRITE_THROUGH};
-use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
 /// AV real-time protection briefly holds `hosts` open, failing `ReplaceFileW` with
 /// `ERROR_SHARING_VIOLATION`; an immediate retry succeeds. Safe to repeat: the replacement is
@@ -107,59 +104,11 @@ fn capture_security(path: &Path) -> Option<SecurityCapture> {
     Some(SecurityCapture { sd, owner, dacl })
 }
 
-/// Best-effort: enables `SeRestorePrivilege` on the current process token. Reassigning an
-/// arbitrary captured owner (`apply_security`, below) can require it when that owner isn't a group
-/// the token already belongs to — it has worked without this on this machine only because the
-/// captured owner happens to be the freely-assignable `BUILTIN\Administrators`, which is not
-/// guaranteed on every machine. Not enabling it here is never itself a failure:
-/// `apply_security`'s own `SetNamedSecurityInfoW` call afterward is the real, typed pass/fail gate.
+/// Setting an owner the token is not a member of needs `SeRestorePrivilege`. Best-effort: the
+/// `SetNamedSecurityInfoW` in `apply_security` is the real pass/fail gate.
 fn try_enable_restore_privilege() {
-    // SAFETY: standard token-privilege-adjustment sequence; the token handle is closed before
-    // returning, on every path.
-    unsafe {
-        let mut token: HANDLE = ptr::null_mut();
-        if OpenProcessToken(
-            GetCurrentProcess(),
-            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
-            &mut token,
-        ) == 0
-        {
-            log::debug!(
-                "OpenProcessToken failed while enabling SeRestorePrivilege: {}",
-                GetLastError()
-            );
-            return;
-        }
-
-        let name = crate::services::wide("SeRestorePrivilege");
-        let mut luid: LUID = std::mem::zeroed();
-        if LookupPrivilegeValueW(ptr::null(), name.as_ptr(), &mut luid) == 0 {
-            log::debug!(
-                "LookupPrivilegeValueW(SeRestorePrivilege) failed: {}",
-                GetLastError()
-            );
-            CloseHandle(token);
-            return;
-        }
-
-        let mut tp: TOKEN_PRIVILEGES = std::mem::zeroed();
-        tp.PrivilegeCount = 1;
-        tp.Privileges[0] = LUID_AND_ATTRIBUTES {
-            Luid: luid,
-            Attributes: SE_PRIVILEGE_ENABLED,
-        };
-
-        let adjusted = AdjustTokenPrivileges(token, 0, &tp, 0, ptr::null_mut(), ptr::null_mut());
-        let err = GetLastError();
-        CloseHandle(token);
-
-        if adjusted == 0 {
-            log::debug!("AdjustTokenPrivileges(SeRestorePrivilege) failed: {err}");
-        } else if err == ERROR_NOT_ALL_ASSIGNED {
-            log::debug!("SeRestorePrivilege is not held by this token; proceeding without it");
-        } else {
-            log::trace!("SeRestorePrivilege enabled");
-        }
+    if let Err(e) = crate::services::privilege::adjust("SeRestorePrivilege", true) {
+        log::debug!("SeRestorePrivilege not enabled, proceeding without it: {e}");
     }
 }
 
