@@ -11,7 +11,6 @@
   "keywords": [
     "tauri",
     "svelte",
-    "sveltekit",
     "vite",
     "tailwindcss",
     "starter-template"
@@ -24,12 +23,11 @@
     "build:debug": "tauri build --debug",
     "build:test": "tauri build --features test-build",
     "dev:test": "tauri dev --features test-build",
-    "prepare": "svelte-kit sync || echo ''",
     "copy-icons": "cpy src-tauri/icons/Toolbox.ico static/icons --flat",
     "postinstall": "pnpm run copy-icons",
-    "clean": "rimraf .svelte-kit dist src-tauri/target",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "clean": "rimraf dist src-tauri/target",
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "format:rust": "cd src-tauri && cargo fmt",
@@ -63,14 +61,12 @@
     "@iconify-json/mdi": "^1.2.3",
     "@iconify-json/ri": "^1.2.10",
     "@iconify-json/tabler": "^1.2.41",
-    "@sveltejs/adapter-static": "^3.0.10",
-    "@sveltejs/kit": "^2.70.3",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.12.1",
     "@types/node": "^26.6.4",
     "cpy-cli": "^7.0.0",
-    "eslint": "^10.11.0",
+    "eslint": "^10.12.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.23.0",
     "prettier": "^3.9.9",
@@ -86,3 +82,4 @@
     "vite": "^8.3.2"
   }
 }
+

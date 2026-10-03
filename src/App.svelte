@@ -14,9 +14,8 @@
   import { updateStore } from "$lib/stores/update.svelte";
   import { installErrorForwarding, logError } from "$lib/utils/logger";
   import "@/app.css";
-  import { onMount, type Snippet } from "svelte";
-
-  let { children }: { children: Snippet } = $props();
+  import { onMount } from "svelte";
+  import Workspace from "./Workspace.svelte";
 
   let shell = $state<HTMLElement | null>(null);
 
@@ -79,7 +78,7 @@
     {#if bootStore.error}
       <LoadError message={bootStore.error} />
     {:else}
-      {@render children()}
+      <Workspace />
     {/if}
   </div>
   <!-- Otherwise the page docks it inside its content column, clear of the sidebar. -->

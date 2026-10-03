@@ -1,6 +1,6 @@
-# Tauri + SvelteKit Rust Backend Developer Guide
+# Tauri + Svelte Rust Backend Developer Guide
 
-This guide will help you understand and work with the Rust backend of this Tauri + SvelteKit starter template.
+This guide will help you understand and work with the Rust backend of this Tauri + Svelte starter template.
 
 ## 📁 Project Structure Overview
 
@@ -131,7 +131,7 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
 ## 🚀 Working with Commands
 
-Commands are Rust functions that your SvelteKit frontend can call. They're defined in the `commands/` directory.
+Commands are Rust functions that your Svelte frontend can call. They're defined in the `commands/` directory.
 
 ### Creating a New Command
 
@@ -160,7 +160,7 @@ pub fn my_new_command(input: String, state: tauri::State<AppState>) -> Result<St
 ])
 ```
 
-**Step 3:** Call it from your SvelteKit frontend:
+**Step 3:** Call it from your Svelte frontend:
 
 ```typescript
 import { invoke } from '@tauri-apps/api/core';
@@ -248,7 +248,7 @@ pub fn get_theme(state: tauri::State<AppState>) -> Result<String> {
 
 ## 🔄 Frontend-Backend Communication
 
-### From SvelteKit to Rust
+### From Svelte to Rust
 
 Use the `invoke` function to call Rust commands:
 
@@ -413,5 +413,5 @@ pub enum Error {
 - [Rust Async Programming](https://rust-lang.github.io/async-book/) - Learn about async in Rust
 - [Serde Documentation](https://serde.rs/) - For data serialization
 - [thiserror Documentation](https://docs.rs/thiserror/) - For error handling
-- [SvelteKit Documentation](https://kit.svelte.dev/docs/introduction)
-- [SvelteKit Playground](https://svelte.dev/playground/hello-world)
+- [Svelte Documentation](https://svelte.dev/docs/svelte/overview)
+- [Svelte Playground](https://svelte.dev/playground/hello-world)

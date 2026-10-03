@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%sveltekit.assets%/icons/Toolbox.ico" />
+    <link rel="icon" href="/icons/Toolbox.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MagicX Toolbox</title>
 
@@ -77,13 +77,12 @@
         }
       }
     </style>
-
-    %sveltekit.head%
   </head>
   <body class="overflow-hidden">
     <div id="initial-loader">
       <div class="initial-spinner"></div>
     </div>
-    <div style="display: contents">%sveltekit.body%</div>
+    <div id="app" style="display: contents"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

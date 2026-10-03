@@ -76,11 +76,10 @@ If you are a developer looking to contribute or build from source, read the sect
 | `pnpm run validate`     | Runs all quality checks: format, lint, and type-check.                                |
 |                        |                                                                                       |
 | `pnpm run clean`        | Removes all build artifacts and temporary directories.                                |
-| `pnpm run prepare`      | SvelteKit's command to generate types                                                 |
 
 The test build adds a Manual Tests view for checking behaviour on a real machine: build it with `pnpm run build:test` (or run `pnpm run dev:test`), copy the binary to the target PC, run it as administrator, and use the Manual Tests entry in the navigation pane. A normal build contains none of that code and never shows the view. See [docs/MANUAL_TESTS.md](docs/MANUAL_TESTS.md).
 
-**Preview mode.** To work on the interface without the Tauri backend, run `pnpm exec vite dev` and open http://localhost:1420/?preview (add `&user` to run as a standard user). Tauri commands are mocked with the fixtures in `src/lib/preview/`, so nothing touches Windows. Only dev builds include it (`import.meta.env.DEV` in `src/hooks.client.ts`).
+**Preview mode.** To work on the interface without the Tauri backend, run `pnpm exec vite dev` and open http://localhost:1420/?preview (add `&user` to run as a standard user). Tauri commands are mocked with the fixtures in `src/lib/preview/`, so nothing touches Windows. Only dev builds include it (`import.meta.env.DEV` in `src/main.ts`).
 
 ### Project Structure
 
@@ -98,7 +97,9 @@ The test build adds a Manual Tests view for checking behaviour on a real machine
 │   │   │   └── ...           # Theme, modal, layout, settings, etc.
 │   │   ├── config/           # App configuration
 │   │   └── types/            # TypeScript types
-│   ├── routes/               # SvelteKit routes
+│   ├── App.svelte            # App shell: title bar, boot, modals
+│   ├── Workspace.svelte      # Navigation pane and the active view
+│   ├── main.ts               # Entry point
 │   └── app.css               # Global styles & CSS variables
 ├── src-tauri/                # Tauri backend
 │   ├── src/

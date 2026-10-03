@@ -125,7 +125,7 @@
   }
 
   :root {
-    /* Picker swatches, one fixed tone per scheme whatever the theme; app.html mirrors them for first paint. */
+    /* Picker swatches, one fixed tone per scheme whatever the theme; index.html mirrors them for first paint. */
     --swatch-purple: #8b5cf6;
     --swatch-blue: #3b82f6;
     --swatch-green: #10b981;
@@ -318,7 +318,7 @@
   --color-caption-close-foreground: #fff;
 }
 
-/* Static: read at runtime, by +page and the sidebar store. */
+/* Static: read at runtime, by Workspace.svelte and the sidebar store. */
 @theme static {
   /* The workspace width at which the summary panel fits beside the page. */
   --container-summary-panel: 87.5rem;

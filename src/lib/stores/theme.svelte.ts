@@ -1,4 +1,3 @@
-import { browser } from "$app/environment";
 import { STORAGE_KEYS } from "$lib/config/app";
 import { duration } from "$lib/utils/motion";
 import { PersistentStore } from "$lib/utils/persistentStore.svelte";
@@ -17,7 +16,6 @@ function paint(theme: Theme) {
 }
 
 function set(theme: Theme) {
-  if (!browser) return;
   const root = document.documentElement;
   root.classList.add("theme-transitioning");
   themeState.value = theme;
@@ -33,7 +31,6 @@ export const themeStore = {
   },
 
   init() {
-    if (!browser) return;
     if (!themeState.restored) {
       themeState.value = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }

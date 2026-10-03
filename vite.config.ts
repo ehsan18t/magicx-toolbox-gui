@@ -1,13 +1,14 @@
-import { sveltekit } from "@sveltejs/kit/vite";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import Icons from "unplugin-icons/vite";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
   plugins: [
-    sveltekit(),
+    svelte(),
     tailwindcss(),
     Icons({
       compiler: "svelte",
@@ -15,6 +16,7 @@ export default defineConfig(async () => ({
     }),
   ],
 
+  publicDir: "static",
   // Tauri loads a fixed port, and a cleared screen would hide its Rust errors.
   clearScreen: false,
   server: {
@@ -34,7 +36,8 @@ export default defineConfig(async () => ({
   },
   resolve: {
     alias: {
-      "@": new URL("./src", import.meta.url).pathname,
+      $lib: fileURLToPath(new URL("./src/lib", import.meta.url)),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   optimizeDeps: {

@@ -15,7 +15,7 @@ export const APP_CONFIG = {
   },
 } as const;
 
-// app.html reads `theme` and `colorScheme` before the bundle loads: rename them there too.
+// index.html reads `theme` and `colorScheme` before the bundle loads: rename them there too.
 export const STORAGE_KEYS = {
   theme: "theme",
   colorScheme: "magicx-color-scheme",
