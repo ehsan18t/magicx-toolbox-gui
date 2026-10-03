@@ -29,7 +29,8 @@ const errors = new SvelteMap<string, string>();
 // eslint-disable-next-line svelte/prefer-svelte-reactivity -- re-check budget, never rendered
 const awaitingStore = new Map<string, number>();
 let loadPromise: Promise<void> | null = null;
-let refreshPromise: Promise<void> | null = null;
+let scanning: Promise<void> | null = null;
+let rescan: Promise<void> | null = null;
 let focusWatched = false;
 
 // Mirrors tweaksData's stamp rule: a scan whose reads began before a removal must not undo it.
@@ -54,20 +55,32 @@ const appsByCategory = $derived.by(() => {
   return byCategory;
 });
 
-/** Concurrent callers share one scan: each one invalidates the backend index. */
+async function scan(): Promise<void> {
+  try {
+    for (const view of await appsApi.getAppStatuses()) adopt(view);
+    scanError = null;
+  } catch (error) {
+    logError("Failed to scan app statuses", error);
+    scanError = errorMessage(error);
+  }
+}
+
+/**
+ * Resolves after a scan that started after the call. A call during a scan queues one more (shared by every
+ * call meanwhile) rather than joining it: the running scan may have read before the change being checked.
+ */
 function refreshStatuses(): Promise<void> {
-  refreshPromise ??= (async () => {
-    try {
-      for (const view of await appsApi.getAppStatuses()) adopt(view);
-      scanError = null;
-    } catch (error) {
-      logError("Failed to scan app statuses", error);
-      scanError = errorMessage(error);
-    }
-  })().finally(() => {
-    refreshPromise = null;
+  if (!scanning) {
+    scanning = scan().finally(() => {
+      scanning = null;
+    });
+    return scanning;
+  }
+  rescan ??= scanning.then(() => {
+    rescan = null;
+    return refreshStatuses();
   });
-  return refreshPromise;
+  return rescan;
 }
 
 async function onWindowFocus(): Promise<void> {
