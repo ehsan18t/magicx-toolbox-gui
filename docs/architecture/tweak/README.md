@@ -65,7 +65,7 @@ These are the ideas every component serves. When a change seems to fight one of 
 | Effect kinds | Read and drive one kind of Windows setting; run scripts | `src-tauri/src/tweaks/kinds/`, `src-tauri/src/services/` | [effect-kinds.md](effect-kinds.md) |
 | Persistence | Snapshot history, Needs Attention records, the action journal, crash recovery, shared claims | `src-tauri/src/tweaks/{snapshot,shared_claims}.rs` | [persistence.md](persistence.md) |
 | Elevation | Privilege levels, routing, the over-the-shoulder guard, the TrustedInstaller broker | `src-tauri/src/tweaks/engine/context.rs`, `src-tauri/src/services/elevation/` | [elevation.md](elevation.md) |
-| Commands and UI | The Tauri command surface, gates, launch sequence, frontend stores, what each state looks like | `src-tauri/src/commands/tweaks.rs`, `src/lib/stores/tweaks*.svelte.ts`, `src/lib/components/tweaks/` | [commands-and-ui.md](commands-and-ui.md) |
+| Commands and UI | The Tauri command surface, gates, launch sequence, frontend stores, what each state looks like | `src-tauri/src/commands/tweaks.rs`, `src/lib/stores/{tweaksData,tweakActions,tweaksPending}.svelte.ts`, `src/lib/components/items/` | [commands-and-ui.md](commands-and-ui.md) |
 | App items | Removable apps outside the tweak model: presence, Remove, Install, the install route | `src-tauri/src/apps/`, `src-tauri/src/commands/apps.rs`, `src-tauri/src/services/appx_index.rs`, `src/lib/stores/apps.svelte.ts` | [apps.md](apps.md) |
 
 Suggested reading order for someone new: this page, then corpus-and-build, detection, apply-and-restore, persistence, and the rest as needed. App items share the build pipeline, the action runner and the per-id lock, but nothing else; read [apps.md](apps.md) on its own.

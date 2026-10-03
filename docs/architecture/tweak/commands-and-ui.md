@@ -2,7 +2,7 @@
 
 This is everything between the engine and the user. A thin Tauri command layer builds the engine's dependencies, gates and serializes every operation that changes the machine, and translates engine results into view types. On the frontend, Svelte rune stores hold the catalog and per-tweak statuses, which the background scan fills in, and the tweak rows render each status.
 
-Code: `src-tauri/src/commands/tweaks.rs` (commands and view types), `src-tauri/src/commands/elevation.rs`, `src-tauri/src/setup.rs`, `src-tauri/src/lib.rs` (registration and window events), `src/lib/stores/tweaks*.svelte.ts`, `src/lib/components/tweaks/`.
+Code: `src-tauri/src/commands/tweaks.rs` (commands and view types), `src-tauri/src/commands/elevation.rs`, `src-tauri/src/setup.rs`, `src-tauri/src/lib.rs` (registration and window events), `src/lib/stores/{tweaksData,tweakActions,tweaksPending}.svelte.ts`, `src/lib/components/items/`.
 
 [Back to the index](README.md)
 
@@ -103,10 +103,11 @@ sequenceDiagram
 
 | Store | Holds |
 | --- | --- |
-| `tweaksData` | The catalog with each tweak's status, category metadata, system info, elevation state, status stamps and buffered early statuses. |
-| `tweaksLoading` | Which tweaks are being changed right now, and per-tweak errors. |
+| `tweaksData` | The tweak model with each tweak's status (`tweaksStore`), category metadata (`categoriesStore`), status stamps and buffered early statuses. |
+| `tweakActions` | The apply, restore and keep-current-state actions (single and batch), with which tweaks are being changed and per-tweak errors. The details window discards snapshot entries through `snapshotHistory`. |
 | `tweaksPending` | Staged option changes, and tweaks waiting for a reboot. |
-| `tweaksActions` | Search and filter state, and the apply, restore and keep-current-state actions (single and batch). The details window calls discard directly. |
+| `system`, `elevation`, `boot` | System info, the elevation ceiling, and the launch sequence that fills them and starts the status stream. |
+| `search`, `pageFilter` | The global search and a list page's in-place filter. |
 | `apps` | App item views, presence statuses, per-app busy and error state, and the Remove, Install and Get in Store actions. Outside pending changes, snapshots and profiles. |
 
 ### What the user sees

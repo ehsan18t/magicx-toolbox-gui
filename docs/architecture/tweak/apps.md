@@ -2,7 +2,7 @@
 
 An app item is a curated, removable app authored in the same YAML files as tweaks, under `apps:`. It is not a tweak: it has no options, no snapshot, no journal, no System Default, no Restore and no Needs Attention (ADR-0009). It has a presence (Installed, Absent or Unknown) and two actions, Remove and Install, that run immediately and are verified by reading presence again.
 
-Code: `src-tauri/src/apps/{mod,run}.rs` (presence, removal, install, install route), `src-tauri/src/commands/apps.rs` (commands and gates), `src-tauri/src/services/appx_index.rs` (the package enumeration), `src-tauri/src/tweaks/{schema,model,validate}.rs` (the `AppDef` model and its build rules), `src/lib/stores/apps.svelte.ts`, `src/lib/components/tweaks/AppRow.svelte`.
+Code: `src-tauri/src/apps/{mod,run}.rs` (presence, removal, install, install route), `src-tauri/src/commands/apps.rs` (commands and gates), `src-tauri/src/services/appx_index.rs` (the package enumeration), `src-tauri/src/tweaks/{schema,model,validate}.rs` (the `AppDef` model and its build rules), `src/lib/stores/apps.svelte.ts`, `src/lib/components/items/AppRow.svelte`.
 
 [Back to the index](README.md)
 

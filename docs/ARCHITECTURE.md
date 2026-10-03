@@ -35,80 +35,48 @@ import { store } from "$lib/stores/store.svelte";
 const derived = $derived(store.value);
 ```
 
-**Store Structure:**
-```
-src/lib/stores/
-├── index.ts              # Barrel export for all stores
-├── theme.svelte.ts       # Theme management (light/dark/system)
-├── modal.svelte.ts       # Modal state (about/settings/update)
-├── layout.svelte.ts      # Navigation pane collapsed/overlay state (sidebarStore)
-├── colorScheme.svelte.ts # Accent color scheme selection
-├── settings.svelte.ts    # App settings with localStorage persistence
-├── logs.svelte.ts        # Logs panel lines, polling, logging settings and export
-├── navigation.svelte.ts  # Tab navigation state
-├── update.svelte.ts      # Update checking state
-├── tweakDetailsModal.svelte.ts # Which tweak the details window shows
-└── tweaks.svelte.ts      # Barrel export for tweaks system
-    ├── tweaksData.svelte.ts    # System info, categories, tweaks list
-    ├── tweaksLoading.svelte.ts # Loading/error state with SvelteSet/SvelteMap
-    ├── tweaksPending.svelte.ts # Pending changes and reboot tracking
-    └── tweaksActions.svelte.ts # Apply, revert, toggle actions
-```
+**Stores** (`src/lib/stores/`, one exported object per module, imported from the module itself):
 
-**Available stores:**
-- `themeStore` - Theme management (light/dark/system)
-- `modalStore` - Modal state (about/settings/update)
-- `sidebarStore` - Navigation pane collapsed/overlay state
-- `colorSchemeStore` - Accent color scheme selection
-- `settingsStore` - App settings with localStorage persistence
-- `logsStore` - Logs panel lines, polling, logging settings and export
-- `navigationStore` - Tab navigation with navigateToTab(), navigateToCategory()
-- `updateStore` - Update info and checking state
-- `tweakDetailsModalStore` - Which tweak the details window shows (also the selected row)
+| Module | Store | Holds |
+| --- | --- | --- |
+| `tweaksData` | `tweaksStore`, `categoriesStore` | The tweak model, categories, and live per-tweak statuses from the `tweak-status` stream |
+| `tweakActions` | `tweakActionsStore` | Apply, restore and keep-current-state (single and batch), with per-tweak running and error state |
+| `tweaksPending` | `pendingChangesStore`, `pendingRebootStore` | Staged changes, and tweaks waiting for a restart |
+| `apps` | `appsStore` | App items, their presence, and Remove, Install and Get in Store (ADR-0009) |
+| `boot` | `bootStore` | The launch sequence after the tweak model: system info, elevation, app presence, the status stream |
+| `system` | `systemStore` | Windows and hardware info, cached across launches |
+| `elevation` | `elevationStore` | The app's elevation ceiling and Restart as admin |
+| `favorites` | `favoritesStore` | Starred tweak ids |
+| `snapshotHistory` | `createSnapshotHistory()` | One details window's snapshot entries and discard |
+| `profile` | `profileStore` | Profile export, import and apply |
+| `navigation` | `navigationStore` | The current page or category |
+| `search`, `pageFilter` | `searchStore`, `pageFilterStore` | Global fuzzy search, and the in-page filter of a list page |
+| `detailsModal` | `tweakDetailsModalStore`, `appDetailsModalStore` | Which item the shared details window shows |
+| `modal`, `confirm`, `toast` | `modalStore`, `confirmStore`, `toastStore` | The open dialog, the shared confirmation dialog, toasts (`toastStore.failure` logs and toasts an error) |
+| `settings`, `theme`, `colorScheme`, `sidebar` | `settingsStore`, `themeStore`, `colorSchemeStore`, `sidebarStore` | Persisted preferences and the navigation pane state |
+| `logs` | `logsStore` | The Logs panel, logging settings and diagnostics export |
+| `update`, `appInfo` | `updateStore`, `appInfoStore` | Update checks and installs, and the app's version facts |
+| `manualTests` | `manualTestsStore` | The Manual Tests view (test build only) |
 
-**Tweaks system stores:**
-- `systemStore` - Windows system info (.info getter)
-- `categoriesStore` - Category definitions (.list, .map)
-- `tweaksStore` - Tweak definitions with status (.list, .byCategory, .stats)
-- `loadingStore` - Per-tweak loading state (SvelteSet-based)
-- `errorStore` - Per-tweak error messages (SvelteMap-based)
-- `pendingChangesStore` - Staged changes before apply (SvelteMap-based)
-- `pendingRebootStore` - Tweaks requiring reboot (SvelteSet-based)
-- `filterStore` - Search and filter state
+Tauri calls live in `src/lib/api/`, one module per command group, and are called from the stores.
 
 ### UI Components
 
-Reusable UI primitives in `$lib/components/ui/`:
-- `Button` - Primary, secondary, danger, ghost variants
-- `Badge` - Status indicators
-- `Card` - Content containers
-- `Modal`, `ModalHeader`, `ModalBody`, `ModalFooter` - Dialog system
-- `IconButton` - Icon-only buttons with tooltips
-- `Switch` - Boolean toggles
-- `Select` - Dropdown selection
-- `SearchInput` - Search with icon
-- `Spinner` - Loading indicator
+Reusable primitives live in `$lib/components/ui/` and are exported from its barrel: buttons (`Button`, `IconButton`, `LinkButton`), surfaces (`Card`, `SectionCard`, `Callout`, `EmptyState`), inputs (`Switch`, `SegmentedSwitch`, `Select`, `Checkbox`, `ToggleChip`, `SearchInput`, `TextField`, `TextArea`), dialogs (`Modal`, `ModalHeader`, `ModalTitle`, `ModalBody`, `ModalFooter`), and status (`Badge`, `Count`, `Meter`, `ProgressBar`, `Spinner`, `SkeletonList`). Their class recipes are in `ui/variants.ts`. Design data (the icon registry, `ICON_SIZE`, tone maps) lives in `$lib/design`; a new icon is registered in `$lib/design/icons.ts`.
 
 ### Component Structure
 
 ```
 src/lib/components/
-├── ui/                   # Reusable primitives (Button, Badge, Card, Modal*, Select, SegmentedSwitch, FilterChips, ...)
-├── tweaks/
-│   ├── TweakRow.svelte          # One tweak as a full-width row: text, callouts, meta line, control
-│   ├── TweakControl.svelte      # The option switch or dropdown, shared by the row and the details window
-│   ├── TweakDetailsModal.svelte # Details window: header control, option comparison table, snapshot history
-│   ├── SummaryPanel.svelte      # "At a glance" pane at 1400px+ content width
-│   ├── GroupedTweakList.svelte  # Rows grouped by category (Favorites, Snapshots)
-│   ├── AppRow.svelte            # One app item as a row
-│   └── details/                 # Registry, service, scheduler, hosts, firewall change items; CommandList
-├── views/                # Overview, Category, Search, Favorites, Snapshots, Settings, Manual Tests
-├── layout/               # TitleBar (search box, Ctrl+K), Sidebar (navigation pane), LogsPanel, PageLayout
-├── feedback/             # PendingBar (staged changes, Apply, Discard), RebootBanner, ApplyingOverlay, toasts
-├── modals/               # About, Update, profile dialogs, ConfirmDialog
-├── profile/              # ProfileManager
-├── settings/             # ThemeToggle, ColorSchemePicker
-└── shared/               # Icon, ExternalLink, MarkdownText
+├── ui/        # Primitives (see above)
+├── items/     # Tweak and app rows: TweakRow, AppRow, TweakControl, GroupedTweakList, Restore buttons
+│   └── details/   # Tweak and app details windows: change matrix, scripts, snapshot history
+├── views/     # Overview, Category, Search, Favorites, Snapshots, Profiles, Settings, Manual Tests
+├── layout/    # TitleBar (search box, Ctrl+K), Sidebar, LogsPanel, PageLayout, SummaryPanel, AppliedMeter
+├── feedback/  # PendingBar, PendingReviewModal, RebootBanner, ApplyingOverlay, LoadError, toasts
+├── modals/    # About, Update, ConfirmDialog
+│   └── profile/   # Profile export and import dialogs
+└── shared/    # Icon, ExternalLink, MarkdownText
 ```
 
 The navigation pane docks expanded at a window width of 1008px and above (the title bar toggle collapses it, and the choice is kept), shows icons only below that, and opens over the content when toggled there. The Logs panel docks under the content column, beside the navigation pane rather than under it. `src/routes/+page.svelte` renders it, and the error screens of `+page.svelte` and `+layout.svelte` render their own, so it stays reachable when loading fails. Design tokens (navy and slate neutrals, the Segoe UI Variable font, seven accent schemes per theme) live in `src/app.css`.
