@@ -56,7 +56,7 @@ tweaks:
       **Turns off incoming Remote Desktop connections, so nothing listens on port 3389 for attackers to target. Connecting from this PC to other machines still works.**
 
       ## Caveats
-      - Allowed actively opens Remote Desktop to incoming connections; it is not a revert. To go back to what you had, pick System Default.
+      - Allowed actively opens Remote Desktop to incoming connections; it is not a revert. To go back to what you had, use Restore.
       - On a managed PC, a Group Policy "Allow users to connect remotely" setting overrides this.
 
       ## Requirements
@@ -703,7 +703,7 @@ tweaks:
       ## Caveats
       - With Administrator Protection turned on (Windows 11 24H2 and newer), a different setting governs elevation prompts and this one no longer decides.
       - A domain or Intune security baseline re-applies its own values at the next refresh.
-      - Notify on app changes writes Windows' default. On a PC already hardened to CIS or STIG, pick System Default instead to keep the stricter setting.
+      - Notify on app changes writes Windows' default. On a PC already hardened to CIS or STIG, use Restore instead to keep the stricter setting.
 
       ## Related
       - **Apply UAC to built-in Administrator** needs this tweak; apply both.
@@ -1598,7 +1598,7 @@ tweaks:
       - Uses some memory, and on older hardware some performance.
 
       ## Caveats
-      - Off writes 0, which really switches it off, even where Windows had turned Credential Guard on by default. To go back to what Windows chose, pick System Default.
+      - Off writes 0, which really switches it off, even where Windows had turned Credential Guard on by default. To go back to what Windows chose, use Restore.
 
       ## Requirements
       - 64-bit Windows with Secure Boot, CPU virtualization support and VBS; Enterprise or Education (Pro under some licensing).
@@ -2686,7 +2686,7 @@ tweaks:
       ## Notes
       - This is Windows' default behaviour, but many "fix my network shares" guides and tweak scripts switch it off; this pins it.
       - A clean PC has no value set, so the tweak shows System Default until you apply, even though it already behaves as Filtered.
-      - Not filtered gives remote local admins full rights, the state this tweak exists to undo. To go back to what you had, pick System Default.
+      - Not filtered gives remote local admins full rights, the state this tweak exists to undo. To go back to what you had, use Restore.
 
       ## Related
       - **Apply UAC to built-in Administrator** has a similar name but covers the built-in account at the keyboard.

@@ -864,7 +864,7 @@ tweaks:
 
       ## Notes
       - Takes effect at the next startup.
-      - Play the startup sound turns the sound on explicitly; to get back exactly what this PC had before, choose System Default.
+      - Play the startup sound turns the sound on explicitly; to get back exactly what this PC had before, use Restore.
 
       ## Sources
       - [DisableStartupSound (Microsoft unattend reference)](https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-authentication-authui-disablestartupsound)

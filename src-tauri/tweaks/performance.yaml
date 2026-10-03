@@ -145,7 +145,7 @@ tweaks:
       - No measurable gain on an SSD with enough RAM.
 
       ## Notes
-      - To revert, prefer System Default: it restores your PC's real prior start type.
+      - To revert, prefer Restore: it puts back your PC's real prior start type from the snapshot.
 
       ## Related
       - **Disable RAM memory compression** controls memory compression, which stays on with this tweak.
@@ -860,7 +860,7 @@ tweaks:
 
       ## Notes
       - Other mitigations (MDS, L1TF, Downfall and more) stay on.
-      - To revert, prefer System Default: it puts back any override that was there before.
+      - To revert, prefer Restore: it puts back any override that was there before.
 
       ## Recommendation
       Hard to justify on modern hardware. Only on an isolated, older, personal PC where you knowingly accept the risk.

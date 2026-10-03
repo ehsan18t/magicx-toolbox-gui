@@ -37,7 +37,7 @@ This category collects the Windows AI controls in one place: Recall (snapshot po
 | Disabled | `1` |
 | Enabled | `absent` (value deleted) |
 
-System Default: shown when `DisableAIDataAnalysis` holds anything other than `1` or absent (for example `0` written by another tool or a GPO); selecting it restores the value captured in the snapshot. Stock Windows has no value here, which reads as the Enabled option (Microsoft documents the default as 0, snapshots may be saved subject to user opt-in).
+System Default: shown when `DisableAIDataAnalysis` holds anything other than `1` or absent (for example `0` written by another tool or a GPO); the Restore button restores the value captured in the snapshot. Stock Windows has no value here, which reads as the Enabled option (Microsoft documents the default as 0, snapshots may be saved subject to user opt-in).
 
 #### How it works
 
@@ -65,7 +65,7 @@ Supported editions per Microsoft: Pro, Enterprise, Education, IoT Enterprise and
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 build 26100.3915 (KB5055627) and newer, including 25H2; Pro, Enterprise, Education, IoT Enterprise, IoT Enterprise LTSC; only meaningful on Copilot+ hardware. Not present on Windows 10 LTSC 2021 (the tweak is hidden there by its build gate).
 - **Takes effect**: after a reboot, which also lets the snapshot deletion settle.
-- **Reverting**: System Default or the Enabled option removes or restores the policy value from the snapshot. The snapshots Windows deleted when the policy was applied do not come back.
+- **Reverting**: Restore or the Enabled option removes or restores the policy value from the snapshot. The snapshots Windows deleted when the policy was applied do not come back.
 
 #### Interactions
 - [Recall feature component](#recall-feature-component) (`AllowRecallEnablement`) lives under the same key and is the stronger lever: it removes the component rather than stopping capture. With the component set to Available, this snapshot policy still decides whether snapshots are saved.
@@ -105,7 +105,7 @@ Apply it on any Copilot+ PC where you want certainty that Recall never captures 
 | Disabled | `absent` (value deleted; the policy's "not configured" state) |
 | Available | `1` |
 
-System Default: shown when `AllowRecallEnablement` holds a value other than 0, 1 or absent; selecting it restores the snapshot. Stock Windows has no value here, which reads as the Disabled option: Microsoft documents that with the policy not configured, the Recall component is present on the device in a disabled state.
+System Default: shown when `AllowRecallEnablement` holds a value other than 0, 1 or absent; the Restore button restores the snapshot. Stock Windows has no value here, which reads as the Disabled option: Microsoft documents that with the policy not configured, the Recall component is present on the device in a disabled state.
 
 #### How it works
 
@@ -171,7 +171,7 @@ Pick Removed if you want Recall gone rather than held off and you are confident 
 | Disabled | `1` |
 | Enabled | `absent` (value deleted) |
 
-System Default: shown when `DisableClickToDo` holds a value other than 1 or absent (for example 0); selecting it restores the snapshot. Stock Windows has no value, which reads as Enabled (documented Default Value 0, Click to Do enabled).
+System Default: shown when `DisableClickToDo` holds a value other than 1 or absent (for example 0); the Restore button restores the snapshot. Stock Windows has no value, which reads as Enabled (documented Default Value 0, Click to Do enabled).
 
 #### How it works
 
@@ -198,7 +198,7 @@ Click to Do needs a Copilot+ PC (40 TOPS NPU, 16 GB RAM, 8 logical processors, 2
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 24H2 and newer on a Copilot+ PC or eligible Cloud PC; Pro, Enterprise, Education, IoT Enterprise, IoT Enterprise LTSC. Not present on Windows 10 LTSC 2021.
 - **Takes effect**: immediately; sign out and back in if an entry point is still visible. No Microsoft source documents a reboot, and the same setting is user-togglable in Settings without one.
-- **Reverting**: System Default or Enabled restores the captured value from the snapshot.
+- **Reverting**: Restore or Enabled restores the captured value from the snapshot.
 
 #### Interactions
 - [Disable Windows Recall snapshots](#disable-windows-recall-snapshots) and [Recall feature component](#recall-feature-component) share the `WindowsAI` key and cover Click to Do inside Recall, which this tweak does not.
@@ -302,7 +302,7 @@ Use it on a Copilot+ PC where Recall is present and you want it off at the compo
 | Hidden | `1` |
 | Shown | `absent` (value deleted) |
 
-System Default: shown when the value holds anything other than 1 or absent (for example 0, the ADMX's disabled value); selecting it restores the snapshot. Stock Windows has no value, which reads as Shown.
+System Default: shown when the value holds anything other than 1 or absent (for example 0, the ADMX's disabled value); the Restore button restores the snapshot. Stock Windows has no value, which reads as Shown.
 
 #### How it works
 
@@ -330,7 +330,7 @@ Because the value is in HKCU, it applies to the current user only and is subject
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 22H2 (with KB5030310) and newer, including 24H2 and 25H2; Windows 10 21H2 build 19044.3758 and newer (so Windows 10 IoT Enterprise LTSC 2021 on a current cumulative update); Pro, Enterprise, Education, IoT Enterprise, IoT Enterprise LTSC. Needs administrator rights: the user can only read `HKCU\Software\Policies`, so an unelevated write is refused.
 - **Takes effect**: after signing out and back in (the tweak does not flag a reboot for this per-user cosmetic change).
-- **Reverting**: System Default or Shown restores the captured value.
+- **Reverting**: Restore or Shown restores the captured value.
 
 #### Interactions
 - The [Copilot](#copilot) app item is the primary Copilot control on 24H2 and newer; this tweak is the cosmetic supplement.
@@ -368,7 +368,7 @@ Apply it if you just want the button out of the way; it costs nothing and is ins
 | Disabled | `1` |
 | Enabled | `absent` (value deleted) |
 
-System Default: shown when the value holds anything other than 1 or absent (for example 0); selecting it restores the snapshot. Stock Windows has no value, which reads as Enabled.
+System Default: shown when the value holds anything other than 1 or absent (for example 0); the Restore button restores the snapshot. Stock Windows has no value, which reads as Enabled.
 
 #### How it works
 
@@ -393,7 +393,7 @@ Notepad updates through the Microsoft Store independently of Windows. The value 
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 22H2 and newer with Notepad 11.2503.16.0 or later.
 - **Takes effect**: the next time Notepad starts.
-- **Reverting**: System Default or Enabled restores the captured value.
+- **Reverting**: Restore or Enabled restores the captured value.
 
 #### Interactions
 None known. No other tweak writes under `HKLM\SOFTWARE\Policies\WindowsNotepad`.
@@ -432,7 +432,7 @@ Apply it if you want Notepad to stay a fast, plain text editor. Skip it if you u
 | Disabled | `1` | `1` | `1` |
 | Enabled | `absent` | `absent` | `absent` |
 
-System Default: shown when the three values do not all match one option (for example only one of them set, or any set to 0); selecting it restores the snapshot. Stock Windows has none of the values, which reads as Enabled (documented Default Value 0 for each).
+System Default: shown when the three values do not all match one option (for example only one of them set, or any set to 0); the Restore button restores the snapshot. Stock Windows has none of the values, which reads as Enabled (documented Default Value 0 for each).
 
 #### How it works
 
@@ -456,7 +456,7 @@ The Policy CSP lists applicability as Windows 11 22H2 (10.0.22621.4870) and late
 #### Applies to, takes effect, reverting
 - **Applies to**: Windows 11 22H2 (22621.4870) and newer, and 24H2 from 26100.3360; Pro, Enterprise, Education, IoT Enterprise, IoT Enterprise LTSC.
 - **Takes effect**: the next time Paint starts.
-- **Reverting**: System Default or Enabled restores the three captured values.
+- **Reverting**: Restore or Enabled restores the three captured values.
 
 #### Interactions
 None known. No other tweak writes under the Paint policy key.
@@ -497,7 +497,7 @@ Apply it if you use Paint for quick drawing and cropping and have no interest in
 | Off (three values are work-account only) | `0` | `0` | `0` | `0` | `0` |
 | On | `absent` | `absent` | `absent` | `absent` | `absent` |
 
-System Default: shown when the five values do not all match one option (for example an organisation's policy sets only some of them, or sets one to 1); selecting it restores the snapshot. Stock Windows has none of these values, which reads as On (Edge's own defaults apply).
+System Default: shown when the five values do not all match one option (for example an organisation's policy sets only some of them, or sets one to 1); the Restore button restores the snapshot. Stock Windows has none of these values, which reads as On (Edge's own defaults apply).
 
 #### How it works
 
@@ -533,7 +533,7 @@ Setting any Edge policy makes Edge show "managed by your organization" on its se
 #### Applies to, takes effect, reverting
 - **Applies to**: any supported Windows with Microsoft Edge installed, including Windows 10 IoT Enterprise LTSC 2021, subject to the per-value Edge minimums above and to the Entra-only restriction on three values.
 - **Takes effect**: after restarting Edge.
-- **Reverting**: System Default or On restores the five captured values; the managed banner clears once no Edge policies remain (other Edge tweaks in the app also write to this key).
+- **Reverting**: Restore or On restores the five captured values; the managed banner clears once no Edge policies remain (other Edge tweaks in the app also write to this key).
 
 #### Interactions
 - Other tweaks write different values under the same key: `disable_edge_first_run` (`HideFirstRunExperience`), `disable_edge_startup_boost` (`StartupBoostEnabled`, `BackgroundModeEnabled`), `disable_edge_sidebar` (`HubsSidebarEnabled`, `EdgeCollectionsEnabled`), `disable_edge_telemetry` (`PersonalizationReportingEnabled`, `Edge3PSerpTelemetryEnabled`) and the SmartScreen tweak (`SmartScreenEnabled`). None collides with these five; any of them keeps the managed banner visible.
@@ -575,7 +575,7 @@ Apply it if you want Edge to stop offering AI in the browsing surface, and expec
 | Manual | `1` | `manual` (Start = 3) |
 | Automatic | `0` | `automatic` (Start = 2) |
 
-System Default: shown whenever the marker does not match the service state, which includes every stock machine (Automatic, but no marker yet); selecting it restores the snapshot. Stock Windows 11 24H2 and 25H2 ship `WSAIFabricSvc` as plain Automatic: not delayed-start and not trigger-started.
+System Default: shown whenever the marker does not match the service state, which includes every stock machine (Automatic, but no marker yet); the Restore button restores the snapshot. Stock Windows 11 24H2 and 25H2 ship `WSAIFabricSvc` as plain Automatic: not delayed-start and not trigger-started.
 
 #### How it works
 

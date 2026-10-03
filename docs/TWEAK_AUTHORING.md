@@ -1005,7 +1005,7 @@ The error:
 
 `windows:` is legal at three levels: **tweak**, **effect**, and **per-option-value**:
 
-**Tweak level**: scopes the whole tweak. If the tweak's scope excludes the running build, a release build does not list the tweak at all; debug and `test-build` builds list it as **unavailable, with the reason**, so every gate stays reviewable on one machine:
+**Tweak level**: scopes the whole tweak. If the tweak's scope excludes the running build, every build still lists the tweak, marked unsupported and shown **unavailable, with the reason**; the UI hides it unless Settings > "Show tweaks this PC cannot run" is on, and the backend refuses to apply it:
 
 ```yaml
 - id: example_windows_scoped
@@ -1045,7 +1045,7 @@ A value that this per-option-value scope excludes on a given build simply has **
 
 ### 10.5 What "excluded on this build" means
 
-A scoped-out effect is **excluded entirely** (not applied, not read, not counted toward detection) on builds its scope excludes. A tweak whose **entire applicable surface is empty** on the running build is left out of a release build's tweak list (debug and `test-build` builds show it **unavailable, with the reason**); it is _not_ an error, just genuinely inapplicable there.
+A scoped-out effect is **excluded entirely** (not applied, not read, not counted toward detection) on builds its scope excludes. A tweak whose **entire applicable surface is empty** on the running build is marked unsupported: it is listed as **unavailable, with the reason**, hidden unless Settings > "Show tweaks this PC cannot run" is on, and refused on apply; it is _not_ an error, just genuinely inapplicable there.
 
 The runtime reads the build via `RtlGetVersion` (never `GetVersionEx`) and the revision via the `UBR` registry value.
 
@@ -2037,7 +2037,7 @@ Tweak-level scope makes a whole tweak apply only on 24H2+:
       values: { modern_flag: 0 }
 ```
 
-Walking the support matrix: on `19045`, `22621`, `22631` the tweak's applicable surface is **empty** → the tweak is **skipped** (not listed in a release build, unavailable in a debug build; not an error). On `26100` it applies, and both options differ on the detectable `modern_flag` → valid.
+Walking the support matrix: on `19045`, `22621`, `22631` the tweak's applicable surface is **empty** → the tweak is **skipped** (listed as unsupported and unavailable, hidden unless "Show tweaks this PC cannot run" is on; not an error). On `26100` it applies, and both options differ on the detectable `modern_flag` → valid.
 
 Now a harder composed case mixing all three scoping levels with an always-in-scope base marker (so no option is ever stranded, cf. §10.6):
 
@@ -2270,7 +2270,7 @@ winget is available when `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe` exist
 
 - **Elevation is fixed**, not authored: Remove needs `admin`; Install runs at `user`; presence degrades unelevated (§20.3). Install is blocked when the app was elevated with another account's credentials, because the app would land in the wrong account; so is a script removal, whose paths may be per-user, and a script item's presence then reads Unknown without running its probe.
 - **No snapshot** (ADR-0009). Nothing is captured before a removal and there is no Restore. The only way back is the install route, and an app with none is permanent: its row is marked Permanent and Remove's confirmation says it cannot be undone. Say so in `info` too.
-- **Visibility:** an app is shown unless it is Absent **and** has no route on this machine. Unknown is always shown, with its buttons disabled. An app whose `windows:` scope excludes the running build is left out of release builds.
+- **Visibility:** an app is shown unless it is Absent **and** has no route on this machine. Unknown is always shown, with its buttons disabled. An app whose `windows:` scope excludes the running build is marked unsupported: hidden unless Settings > "Show tweaks this PC cannot run" is on, and the backend refuses its buttons.
 - **Feature updates can re-add apps.** Windows feature updates (and, for some apps, Windows Update) re-provision removed packages. The row then reads Installed again. Say this in `info` for every app it applies to.
 - Favorites, profiles, the pending bar, the applied counter and Restore all ignore apps.
 

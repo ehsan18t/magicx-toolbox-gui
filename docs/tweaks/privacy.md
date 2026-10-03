@@ -62,7 +62,7 @@ A note on "System Default" for every entry below: it is not an option anyone aut
 | Required only | `1` |
 | User's choice | `absent` |
 
-System Default appears only if the value holds something other than 1 or nothing (for example 0 or 3 written by another tool or an MDM profile); selecting it restores the snapshot. The stock Windows state is value-absent, which is exactly the "User's choice" option.
+System Default appears only if the value holds something other than 1 or nothing (for example 0 or 3 written by another tool or an MDM profile); the Restore button restores the snapshot. The stock Windows state is value-absent, which is exactly the "User's choice" option.
 
 #### How it works
 
@@ -257,7 +257,7 @@ Apply it on a machine you keep on its current Windows version. Hold off if you a
 | Off | `1` |
 | On | `absent` |
 
-System Default appears only if the value holds something other than 1 or nothing; selecting it restores the snapshot. The stock Windows state is value-absent ("On").
+System Default appears only if the value holds something other than 1 or nothing; the Restore button restores the snapshot. The stock Windows state is value-absent ("On").
 
 #### How it works
 
@@ -313,7 +313,7 @@ Apply it on any machine that is not enrolled in the Windows Insider Program. If 
 | Never | `0` | `0` |
 | Automatic | `absent` | `absent` |
 
-System Default appears when the pair matches neither row, for example when Settings has set "Always", "Once a day" or "Once a week"; selecting it restores the snapshot. The stock Windows state is both values absent ("Automatically").
+System Default appears when the pair matches neither row, for example when Settings has set "Always", "Once a day" or "Once a week"; the Restore button restores the snapshot. The stock Windows state is both values absent ("Automatically").
 
 #### How it works
 
@@ -378,7 +378,7 @@ Apply it if you cannot or do not want to set a machine-wide policy. If you have 
 | Blocked | `1` |
 | Allowed | `absent` |
 
-System Default appears only if the value holds something other than 1 or nothing (for example 0); selecting it restores the snapshot. The stock Windows state is value-absent ("Allowed").
+System Default appears only if the value holds something other than 1 or nothing (for example 0); the Restore button restores the snapshot. The stock Windows state is value-absent ("Allowed").
 
 #### How it works
 
@@ -438,7 +438,7 @@ Apply it if you want the local configuration to stay put and you accept that som
 | Excluded | `0` |
 | Not configured | `absent` |
 
-System Default appears if the value holds 1 (the device name is being sent, typically set by an MDM profile or administrative template); selecting it restores the snapshot. The stock Windows state is value-absent. "Not configured" deletes the value, which in practice also excludes the device name, because that is Windows' default when the policy is not configured.
+System Default appears if the value holds 1 (the device name is being sent, typically set by an MDM profile or administrative template); the Restore button restores the snapshot. The stock Windows state is value-absent. "Not configured" deletes the value, which in practice also excludes the device name, because that is Windows' default when the policy is not configured.
 
 #### How it works
 
@@ -498,7 +498,7 @@ Apply it if you manage the machine's configuration deliberately and want the exc
 | Disabled | `0` | `0` | `0` |
 | Enabled | `absent` | `absent` | `absent` |
 
-System Default appears when the three values are mixed (for example only one of them set) or hold 1; selecting it restores the snapshot. The stock Windows state is all three absent.
+System Default appears when the three values are mixed (for example only one of them set) or hold 1; the Restore button restores the snapshot. The stock Windows state is all three absent.
 
 #### How it works
 
@@ -555,7 +555,7 @@ Apply it on Windows 11; the cost is essentially nil and it prevents the feature 
 | Disabled | `0` |
 | Enabled | `absent` |
 
-System Default appears if the value holds 1 (explicitly allowed); selecting it restores the snapshot. The stock Windows state is value-absent, which behaves as allowed.
+System Default appears if the value holds 1 (explicitly allowed); the Restore button restores the snapshot. The stock Windows state is value-absent, which behaves as allowed.
 
 #### How it works
 
@@ -608,7 +608,7 @@ Apply it on any machine where you paste credentials, keys or personal data. Leav
 | Off | `0` |
 | On | `absent` |
 
-System Default appears when the value holds 1, which is what Windows writes once a user has accepted online speech recognition in OOBE or Settings; selecting it restores the snapshot. The stock state is value-absent: the value only materialises when the user answers the consent prompt.
+System Default appears when the value holds 1, which is what Windows writes once a user has accepted online speech recognition in OOBE or Settings; the Restore button restores the snapshot. The stock state is value-absent: the value only materialises when the user answers the consent prompt.
 
 #### How it works
 
@@ -974,7 +974,7 @@ Apply it on a machine where you install Store apps you do not fully trust. Skip 
 | Off | `0` |
 | On | `absent` |
 
-System Default appears if the value holds 1 (explicitly allowed); selecting it restores the snapshot. The stock Windows state is value-absent ("On").
+System Default appears if the value holds 1 (explicitly allowed); the Restore button restores the snapshot. The stock Windows state is value-absent ("On").
 
 #### How it works
 
@@ -1030,7 +1030,7 @@ Apply it on a desktop that never leaves the house. Do not apply it on a laptop o
 | Disabled | `2` | `1` |
 | Enabled | `absent` | `absent` |
 
-System Default appears when the pair matches neither row (for example `DisableSettingSync` = 2 with the user override allowed); selecting it restores the snapshot. The stock Windows state is both values absent.
+System Default appears when the pair matches neither row (for example `DisableSettingSync` = 2 with the user override allowed); the Restore button restores the snapshot. The stock Windows state is both values absent.
 
 #### How it works
 
@@ -1087,7 +1087,7 @@ Apply it on a single-device setup, or on any machine where saved passwords shoul
 | Disabled | `1` | `1` |
 | Enabled | `absent` | `absent` |
 
-System Default appears when the two values disagree or hold 0; selecting it restores the snapshot. The stock Windows state is both values absent (WER enabled).
+System Default appears when the two values disagree or hold 0; the Restore button restores the snapshot. The stock Windows state is both values absent (WER enabled).
 
 #### How it works
 
@@ -1149,7 +1149,7 @@ Apply it on a stable machine you do not troubleshoot. Do not apply it while you 
 | Off | `0` | `0` | `0` | `0` |
 | On | `absent` | `absent` | `absent` | `absent` |
 
-System Default appears when the four values are mixed or hold 1 (for example after toggling the Settings control, which writes explicit values); selecting it restores the snapshot. The stock state is all four absent: none exists in the shipped Default user hive on build 26100.
+System Default appears when the four values are mixed or hold 1 (for example after toggling the Settings control, which writes explicit values); the Restore button restores the snapshot. The stock state is all four absent: none exists in the shipped Default user hive on build 26100.
 
 #### How it works
 
@@ -1215,7 +1215,7 @@ Apply it; there is no downside beyond losing the advertisements. Skip it only if
 | Off | `0` |
 | On | `1` |
 
-System Default appears only if the value is missing or holds something other than 0 or 1; selecting it restores the snapshot. The stock Windows state is a literal 1: unlike the `SubscribedContent-*` values, this value is genuinely seeded, present with data 1 in the shipped Default user hive on build 26100.
+System Default appears only if the value is missing or holds something other than 0 or 1; the Restore button restores the snapshot. The stock Windows state is a literal 1: unlike the `SubscribedContent-*` values, this value is genuinely seeded, present with data 1 in the shipped Default user hive on build 26100.
 
 #### How it works
 
@@ -1279,7 +1279,7 @@ Apply it on any machine; there is no cost. For a clean Windows 11 Start menu, pa
 | Off | `0` |
 | On | `absent` |
 
-System Default appears if the value holds 1 (which Settings writes when the toggle is flipped back on); selecting it restores the snapshot. The stock state is value-absent, which Windows treats the same as 1 (tracking on).
+System Default appears if the value holds 1 (which Settings writes when the toggle is flipped back on); the Restore button restores the snapshot. The stock state is value-absent, which Windows treats the same as 1 (tracking on).
 
 #### How it works
 
@@ -1337,7 +1337,7 @@ Apply it if a shared or observed machine makes the local record of what you run 
 | Off | `0` | `0` |
 | On | `1` | `absent` |
 
-System Default appears when the pair matches neither row (for example 338387 explicitly 1 after using the Settings toggle); selecting it restores the snapshot. The stock state is split: `RotatingLockScreenOverlayEnabled` is present with data 1 in the shipped Default user hive on 26100 (alongside `RotatingLockScreenEnabled` = 1), while `SubscribedContent-338387Enabled` is absent, like every other `SubscribedContent-*` value.
+System Default appears when the pair matches neither row (for example 338387 explicitly 1 after using the Settings toggle); the Restore button restores the snapshot. The stock state is split: `RotatingLockScreenOverlayEnabled` is present with data 1 in the shipped Default user hive on 26100 (alongside `RotatingLockScreenEnabled` = 1), while `SubscribedContent-338387Enabled` is absent, like every other `SubscribedContent-*` value.
 
 #### How it works
 
@@ -1463,7 +1463,7 @@ Apply it if the notifications distract you. On Home or Pro, expect only the per-
 | Disabled | `1` |
 | Enabled | `absent` |
 
-System Default appears only if the value holds something other than 1 or nothing (for example 0); selecting it restores the snapshot. The stock Windows state is value-absent.
+System Default appears only if the value holds something other than 1 or nothing (for example 0); the Restore button restores the snapshot. The stock Windows state is value-absent.
 
 #### How it works
 
@@ -1523,7 +1523,7 @@ Apply it on Enterprise, Education or IoT. On Home or Pro it does nothing, so use
 | Off | `0` | `0` |
 | On | `absent` | `absent` |
 
-System Default appears when the two values are mixed or hold 1; selecting it restores the snapshot. The stock state is both absent (Edge defaults).
+System Default appears when the two values are mixed or hold 1; the Restore button restores the snapshot. The stock state is both absent (Edge defaults).
 
 #### How it works
 
@@ -1584,7 +1584,7 @@ Apply it if you use Edge at all, even occasionally. If Edge is not installed, sk
 | Blocked | `1` |
 | Allowed | `absent` |
 
-System Default appears if the value holds 0 (Settings may write an explicit 0 when the toggle is turned back on); selecting it restores the snapshot. The stock state is value-absent; 0 and absent behave the same.
+System Default appears if the value holds 0 (Settings may write an explicit 0 when the toggle is turned back on); the Restore button restores the snapshot. The stock state is value-absent; 0 and absent behave the same.
 
 #### How it works
 
@@ -1640,7 +1640,7 @@ Apply it; the cost is one convenience that most people never notice. Skip it if 
 | Disabled | `1` |
 | Enabled | `absent` |
 
-System Default appears only if the value holds something other than 1 or nothing (for example 0); selecting it restores the snapshot. The stock state is value-absent.
+System Default appears only if the value holds something other than 1 or nothing (for example 0); the Restore button restores the snapshot. The stock state is value-absent.
 
 #### How it works
 
@@ -1703,7 +1703,7 @@ Apply it on a machine that does not use OneDrive or SharePoint for daily work, w
 | Disabled | `1` | `1` | `1` | `1` |
 | Enabled | `absent` | `absent` | `absent` | `absent` |
 
-System Default appears when the four values are mixed (for example only some set) or hold 0; selecting it restores the snapshot. The stock state is all four absent.
+System Default appears when the four values are mixed (for example only some set) or hold 0; the Restore button restores the snapshot. The stock state is all four absent.
 
 #### How it works
 
@@ -1769,7 +1769,7 @@ Apply it on any 24H2 or newer machine you keep on its current apps. Skip it if y
 | Off | `0` |
 | On | `absent` |
 
-System Default appears if the value holds 1 (Settings writes 1 when the toggle is turned on explicitly); selecting it restores the snapshot. The stock state is value-absent.
+System Default appears if the value holds 1 (Settings writes 1 when the toggle is turned on explicitly); the Restore button restores the snapshot. The stock state is value-absent.
 
 #### How it works
 
@@ -1831,7 +1831,7 @@ Apply it on a shared or observed machine, or if a search history you never asked
 | Disabled | `0` | `0` | `0` |
 | Enabled | `absent` | `absent` | `absent` |
 
-System Default appears when the three values are mixed or hold other data, including `AllowCloudSearch` = 1 (Enable) or 2 (User Selected), which this tweak does not author; selecting it restores the snapshot. The stock state is all three absent. The two HKCU effects run as the interactive user.
+System Default appears when the three values are mixed or hold other data, including `AllowCloudSearch` = 1 (Enable) or 2 (User Selected), which this tweak does not author; the Restore button restores the snapshot. The stock state is all three absent. The two HKCU effects run as the interactive user.
 
 #### How it works
 
@@ -1893,7 +1893,7 @@ Apply it on a personal machine where taskbar search is for launching apps and fi
 | Blocked | `2` (Force Deny) | `2` (Force Deny) |
 | Allowed | `absent` | `absent` |
 
-System Default appears when the two values are mixed or hold 0 (User in control) or 1 (Force Allow); selecting it restores the snapshot. The stock state is both absent, meaning the user is in control.
+System Default appears when the two values are mixed or hold 0 (User in control) or 1 (Force Allow); the Restore button restores the snapshot. The stock state is both absent, meaning the user is in control.
 
 #### How it works
 
@@ -1952,7 +1952,7 @@ Apply it on any machine with a microphone where you do not use a wake word. Skip
 | Disabled | `0` |
 | Enabled | `absent` |
 
-System Default appears if the value holds 1 (periodic backup explicitly enabled by policy); selecting it restores the snapshot. The stock state is value-absent. Note that the "Enabled" label means "policy not configured", which by Microsoft's text also means periodic backup does not take place.
+System Default appears if the value holds 1 (periodic backup explicitly enabled by policy); the Restore button restores the snapshot. The stock state is value-absent. Note that the "Enabled" label means "policy not configured", which by Microsoft's text also means periodic backup does not take place.
 
 #### How it works
 
@@ -2010,7 +2010,7 @@ Apply it if you back up deliberately with your own tooling and do not want a Mic
 | Disabled | `0` |
 | Enabled | `absent` |
 
-System Default appears if the value holds 1; selecting it restores the snapshot. The stock state is value-absent.
+System Default appears if the value holds 1; the Restore button restores the snapshot. The stock state is value-absent.
 
 #### How it works
 
