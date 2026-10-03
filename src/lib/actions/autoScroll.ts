@@ -15,11 +15,15 @@ export const autoScroll: Attachment<HTMLElement> = (node) => {
   // characterData too: a line keyed by index can be rewritten in place.
   const mutate = new MutationObserver(pin);
   mutate.observe(node, { childList: true, subtree: true, characterData: true });
+  // Shrinking keeps scrollTop, so the newest line would drop below the fold.
+  const resize = new ResizeObserver(pin);
+  resize.observe(node);
   node.addEventListener("scroll", track, { passive: true });
   pin();
 
   return () => {
     mutate.disconnect();
+    resize.disconnect();
     node.removeEventListener("scroll", track);
   };
 };
