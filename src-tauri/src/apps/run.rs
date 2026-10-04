@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use super::{install_route, AppPresence, InstallRoute, Machine};
@@ -126,7 +127,11 @@ pub(crate) fn remove(app: &AppDef, m: &dyn Machine) -> Result<AppPresence, Error
     }
 }
 
-pub(crate) fn install(app: &AppDef, m: &dyn Machine) -> Result<AppPresence, Error> {
+pub(crate) fn install(
+    app: &AppDef,
+    m: &dyn Machine,
+    cancel: &AtomicBool,
+) -> Result<AppPresence, Error> {
     let route = install_route(
         app.install.as_ref(),
         m.winget_available(),
@@ -142,12 +147,24 @@ pub(crate) fn install(app: &AppDef, m: &dyn Machine) -> Result<AppPresence, Erro
             )))
         }
     };
-    let run = m
-        .powershell(&winget_install_script(id, source)?, INSTALL_TIMEOUT)
-        .map_err(|e| {
+    if cancel.load(Ordering::SeqCst) {
+        return Err(cancelled(app));
+    }
+    let script = winget_install_script(id, source)?;
+    let run = match m.powershell_until(&script, INSTALL_TIMEOUT, cancel) {
+        Ok(run) => run,
+        Err(e) => {
+            stop_store_install(app, (source == "msstore").then_some(id.as_str()), m)?;
+            if cancel.load(Ordering::SeqCst) {
+                return verify_cancel(app, m);
+            }
             log::error!("installing app '{}': {e}", app.id);
-            Error::AppFailed(format!("Installing {} did not finish: {e}", app.name))
-        })?;
+            return Err(Error::AppFailed(format!(
+                "Installing {} did not finish: {e}",
+                app.name
+            )));
+        }
+    };
     let code = run.code;
     if code != 0 {
         run.warn_on_failure(&format!("installing app '{}' with winget", app.id));
@@ -169,6 +186,79 @@ pub(crate) fn install(app: &AppDef, m: &dyn Machine) -> Result<AppPresence, Erro
             app.name
         ))),
     }
+}
+
+fn cancelled(app: &AppDef) -> Error {
+    Error::AppCancelled(format!("Installing {} was cancelled.", app.name))
+}
+
+/// After winget is killed, by a cancel or the timeout: a Store install runs on in the Store's own
+/// service, so it is cancelled there too.
+fn stop_store_install(app: &AppDef, store_id: Option<&str>, m: &dyn Machine) -> Result<(), Error> {
+    if let Some(id) = store_id {
+        let run = m
+            .powershell(&store_cancel_script(id)?, ACTION_TIMEOUT)
+            .map_err(|e| {
+                log::error!("cancelling the Store install of app '{}': {e}", app.id);
+                Error::AppFailed(format!(
+                    "winget was stopped, but the Microsoft Store may still be installing {}: {e}",
+                    app.name
+                ))
+            })?;
+        if run.code != 0 {
+            run.warn_on_failure(&format!("cancelling the Store install of app '{}'", app.id));
+            return Err(Error::AppFailed(format!(
+                "winget was stopped, but the Microsoft Store may still be installing {} ({}).",
+                app.name,
+                describe_exit(run.code)
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Whatever presence reads after a cancel is the outcome; an install that finished first stands.
+fn verify_cancel(app: &AppDef, m: &dyn Machine) -> Result<AppPresence, Error> {
+    log::info!("install of app '{}' cancelled", app.id);
+    m.invalidate();
+    match presence(app, m) {
+        installed @ AppPresence::Installed { .. } => Ok(installed),
+        AppPresence::Absent => Err(cancelled(app)),
+        AppPresence::Unknown { reason, .. } => Err(Error::AppFailed(format!(
+            "Installing {} was cancelled, but whether part of it remains could not be confirmed: {reason}",
+            app.name
+        ))),
+    }
+}
+
+/// `Cancel` throws E_BOUNDS (0x8000000B) when nothing is queued. Exit 3: still queued after the wait.
+const STORE_CANCEL_SCRIPT: &str = r"$ErrorActionPreference = 'Stop'
+try {
+    $null = [Windows.ApplicationModel.Store.Preview.InstallControl.AppInstallManager,Windows.ApplicationModel.Store.Preview,ContentType=WindowsRuntime]
+    $m = [Windows.ApplicationModel.Store.Preview.InstallControl.AppInstallManager]::new()
+    try { $m.Cancel('{id}') } catch { if ($_.Exception.InnerException.HResult -ne 0x8000000B) { throw } }
+    $deadline = (Get-Date).AddSeconds(20)
+    while (@($m.AppInstallItems | Where-Object { $_.ProductId -eq '{id}' -and $_.GetCurrentStatus().InstallState -notin 'Completed', 'Canceled', 'Error' }).Count) {
+        if ((Get-Date) -gt $deadline) { exit 3 }
+        Start-Sleep -Milliseconds 500
+    }
+} catch {
+    $e = $_.Exception
+    while ($e.InnerException) { $e = $e.InnerException }
+    $h = $e.HResult
+    if ($h -eq 0) { $h = 1 }
+    exit $h
+}
+exit 0
+";
+
+fn store_cancel_script(id: &str) -> Result<String, Error> {
+    if !is_store_id(id) {
+        return Err(Error::AppFailed(format!(
+            "{id:?} is not a valid install id."
+        )));
+    }
+    Ok(STORE_CANCEL_SCRIPT.replace("{id}", id))
 }
 
 /// Bundle pass, then main, then provisioned, per package. Every name is re-checked against the
@@ -429,7 +519,10 @@ mod tests {
         }
         .with_appx(vec![Ok(lookup(true, false))])
         .with_exits(vec![Ok(0)]);
-        assert_eq!(install(&appx_app(), &m).unwrap(), installed());
+        assert_eq!(
+            install(&appx_app(), &m, &AtomicBool::new(false)).unwrap(),
+            installed()
+        );
         let (script, timeout) = &m.ran()[0];
         assert!(script.contains(
             "install --id '9NBLGGH4R32N' -e --source msstore --accept-source-agreements --accept-package-agreements"
@@ -448,7 +541,7 @@ mod tests {
         }
         .with_appx(vec![Ok(lookup(true, false))])
         .with_exits(vec![Ok(0)]);
-        install(&def, &m).unwrap();
+        install(&def, &m, &AtomicBool::new(false)).unwrap();
         assert!(m.ran()[0]
             .0
             .contains("--id 'Vendor.App' -e --source winget"));
@@ -476,7 +569,10 @@ mod tests {
                 store,
                 ..Default::default()
             };
-            assert!(matches!(install(&def, &m), Err(Error::AppUnavailable(_))));
+            assert!(matches!(
+                install(&def, &m, &AtomicBool::new(false)),
+                Err(Error::AppUnavailable(_))
+            ));
             assert!(m.ran().is_empty());
         }
     }
@@ -490,7 +586,9 @@ mod tests {
         }
         .with_appx(vec![Ok(lookup(false, false))])
         .with_exits(vec![Ok(0)]);
-        let err = install(&appx_app(), &m).unwrap_err().to_string();
+        let err = install(&appx_app(), &m, &AtomicBool::new(false))
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("still not installed"), "{err}");
 
         let m = FakeMachine {
@@ -498,7 +596,100 @@ mod tests {
             ..Default::default()
         }
         .with_exits(vec![Ok(0x8A15_0014_u32 as i32)]);
-        let err = install(&appx_app(), &m).unwrap_err().to_string();
+        let err = install(&appx_app(), &m, &AtomicBool::new(false))
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("0x8A150014"), "{err}");
+    }
+
+    fn killed(
+        answers: Vec<Result<i32, String>>,
+        appx: Vec<Result<AppxLookup, String>>,
+    ) -> FakeMachine {
+        FakeMachine {
+            elevated: true,
+            winget: true,
+            cancels_in_run: true,
+            ..Default::default()
+        }
+        .with_appx(appx)
+        .with_exits(answers)
+    }
+
+    #[test]
+    fn a_cancelled_store_install_is_cancelled_in_the_store_and_verified_absent() {
+        let m = killed(
+            vec![Err("killed".into()), Ok(0)],
+            vec![Ok(lookup(false, false))],
+        );
+        let err = install(&appx_app(), &m, &AtomicBool::new(false)).unwrap_err();
+        assert!(matches!(err, Error::AppCancelled(_)), "{err:?}");
+        let ran = m.ran();
+        assert!(ran[1].0.contains("$m.Cancel('9NBLGGH4R32N')"));
+        assert!(ran[1].0.contains("$_.ProductId -eq '9NBLGGH4R32N'"));
+        assert_eq!(ran[1].1, ACTION_TIMEOUT);
+        assert_eq!(m.invalidated(), 1);
+    }
+
+    #[test]
+    fn a_cancel_that_lands_after_the_install_finished_reads_installed() {
+        let m = killed(
+            vec![Err("killed".into()), Ok(0)],
+            vec![Ok(lookup(true, false))],
+        );
+        assert_eq!(
+            install(&appx_app(), &m, &AtomicBool::new(false)).unwrap(),
+            installed()
+        );
+    }
+
+    #[test]
+    fn a_store_cancel_that_fails_says_the_store_may_still_be_installing() {
+        let m = killed(vec![Err("killed".into()), Ok(3)], vec![]);
+        let err = install(&appx_app(), &m, &AtomicBool::new(false))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("may still be installing"), "{err}");
+        assert_eq!(m.invalidated(), 0);
+    }
+
+    #[test]
+    fn a_cancelled_winget_source_install_skips_the_store() {
+        let mut def = appx_app();
+        def.install = Some(InstallSource::Winget("Vendor.App".into()));
+        let m = killed(vec![Err("killed".into())], vec![Ok(lookup(false, false))]);
+        let err = install(&def, &m, &AtomicBool::new(false)).unwrap_err();
+        assert!(matches!(err, Error::AppCancelled(_)), "{err:?}");
+        assert_eq!(m.ran().len(), 1);
+    }
+
+    #[test]
+    fn a_timed_out_store_install_is_cancelled_in_the_store_and_reported_unfinished() {
+        let m = FakeMachine {
+            winget: true,
+            ..Default::default()
+        }
+        .with_exits(vec![Err("timeout".into()), Ok(0)]);
+        let err = install(&appx_app(), &m, &AtomicBool::new(false))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("did not finish"), "{err}");
+        assert!(m.ran()[1].0.contains("$m.Cancel('9NBLGGH4R32N')"));
+    }
+
+    #[test]
+    fn a_cancel_before_winget_starts_runs_nothing() {
+        let m = killed(vec![], vec![]);
+        let err = install(&appx_app(), &m, &AtomicBool::new(true)).unwrap_err();
+        assert!(matches!(err, Error::AppCancelled(_)), "{err:?}");
+        assert!(m.ran().is_empty());
+    }
+
+    #[test]
+    fn the_store_cancel_script_embeds_only_a_validated_id() {
+        assert!(store_cancel_script("9NBLGGH4R32N")
+            .unwrap()
+            .contains("Cancel('9NBLGGH4R32N')"));
+        assert!(store_cancel_script("x'); Remove-Item -Recurse C:/; ('").is_err());
     }
 }

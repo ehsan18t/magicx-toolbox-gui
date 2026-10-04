@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isAppExiting, isElevationDeclined, isUpdateFolderReadOnly } from "./error.ts";
+import { isAppCancelled, isAppExiting, isElevationDeclined, isUpdateFolderReadOnly } from "./error.ts";
 
 const PREDICATES = {
+  APP_CANCELLED: isAppCancelled,
   APP_EXITING: isAppExiting,
   ELEVATION_DECLINED: isElevationDeclined,
   UPDATE_FOLDER_READ_ONLY: isUpdateFolderReadOnly,

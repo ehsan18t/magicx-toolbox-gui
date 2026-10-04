@@ -23,7 +23,7 @@ Code: `src-tauri/src/commands/tweaks.rs` (commands and view types), `src-tauri/s
 | `rescan_after_elevation` | Starts another full scan. | none |
 | `restart_as_admin` | Relaunches the app elevated through UAC. | exit latch |
 
-App items have their own commands (`get_apps`, `get_app_statuses`, `remove_app`, `install_app`), gated by the same availability check and per-id lock; see [apps.md](apps.md#gates).
+App items have their own commands (`get_apps`, `get_app_statuses`, `remove_app`, `install_app`, `cancel_app_install`), gated by the same availability check and per-id lock; see [apps.md](apps.md#gates).
 
 The test build adds the Manual Tests run, list and cancel commands, which drive the same gated apply and restore paths (`manual_tests_available` exists in every build); see [MANUAL_TESTS.md](../../MANUAL_TESTS.md).
 

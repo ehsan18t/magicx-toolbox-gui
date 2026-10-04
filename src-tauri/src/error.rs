@@ -81,6 +81,10 @@ pub enum Error {
     /// An app removal or install that failed, or ran but did not verify.
     #[error("{0}")]
     AppFailed(String),
+
+    /// An install the user cancelled, verified absent afterwards.
+    #[error("{0}")]
+    AppCancelled(String),
 }
 
 /// Win32 codes (WinError.h) that [`Error::Win32`] carries and the failure classification keys on.
@@ -150,6 +154,7 @@ impl Error {
             Error::TweakUnavailable(_) => "TWEAK_UNAVAILABLE",
             Error::AppUnavailable(_) => "APP_UNAVAILABLE",
             Error::AppFailed(_) => "APP_FAILED",
+            Error::AppCancelled(_) => "APP_CANCELLED",
             Error::AppExiting(_) => "APP_EXITING",
         }
     }

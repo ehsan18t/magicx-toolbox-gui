@@ -222,6 +222,7 @@ fn outcome_line<T>(
             | Error::AppExiting(_)
             | Error::NotFound(_)),
         ) => (log::Level::Warn, format!("{what} refused: {}", e.code())),
+        Err(Error::AppCancelled(_)) => (log::Level::Info, format!("{what}: cancelled in {ms} ms")),
         Err(e) => (
             log::Level::Warn,
             format!("{what} failed: {}: {e}", e.code()),
@@ -287,6 +288,11 @@ mod tests {
             assert_eq!(level, log::Level::Warn);
             assert_eq!(line, format!("apply 'x' -> 'On' refused: {code}"));
         }
+        let cancelled: Result<()> = Err(Error::AppCancelled("Installing X was cancelled.".into()));
+        assert_eq!(
+            outcome_line("install 'x'", 7, &cancelled, |_| unreachable!()),
+            (log::Level::Info, "install 'x': cancelled in 7 ms".into())
+        );
         let failed: Result<()> = Err(Error::AppFailed("Removing X failed (exit code 1).".into()));
         assert_eq!(
             outcome_line("remove 'x'", 1, &failed, |_| unreachable!()),

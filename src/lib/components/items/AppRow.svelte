@@ -104,14 +104,27 @@
 
   {#snippet notices()}
     {#if operation}
-      <div class="flex items-center gap-3 text-xs text-foreground-muted" role="status" transition:expand>
+      <div class="flex items-center gap-3 text-xs text-foreground-muted" transition:expand>
         <ActivityBar class="flex-1" />
         <!-- The clock stays out of the live region, which would otherwise re-announce every second. -->
-        <span class="tabular-nums"
-          >{APP_OPERATION_LABEL[operation.kind]}…<span aria-hidden="true">
+        <span class="tabular-nums" role="status"
+          >{operation.cancelling ? "Cancelling" : APP_OPERATION_LABEL[operation.kind]}…<span aria-hidden="true">
             {elapsedClock(operation.startedAt, now)}</span
           ></span
         >
+        {#if operation.kind === "install"}
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="mdi:close"
+            disabled={operation.cancelling}
+            tooltip={operation.cancelling ? "Stopping the install…" : null}
+            onclick={() => void appsStore.cancelInstall(app.id)}
+            aria-label="Cancel installing {app.name}"
+          >
+            Cancel
+          </Button>
+        {/if}
       </div>
     {/if}
 

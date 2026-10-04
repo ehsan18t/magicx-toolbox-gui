@@ -1,6 +1,10 @@
 //! Tauri commands for app items (ADR-0009). Removal and install run under the same per-id
 //! lifecycle lock as an apply, so close, restart and update wait for them.
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -251,11 +255,46 @@ fn find_app(app_id: &str) -> Result<&'static AppDef> {
         .ok_or_else(|| Error::NotFound(format!("app '{app_id}'")))
 }
 
+/// The cancel flag of each install in flight, by app id.
+static INSTALL_CANCELS: LazyLock<Mutex<HashMap<&'static str, Arc<AtomicBool>>>> =
+    LazyLock::new(Mutex::default);
+
+fn install_cancels() -> std::sync::MutexGuard<'static, HashMap<&'static str, Arc<AtomicBool>>> {
+    INSTALL_CANCELS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Registers an install's cancel flag for its whole run, gate included, and drops it on any exit.
+struct InstallCancel {
+    id: &'static str,
+    flag: Arc<AtomicBool>,
+}
+
+impl InstallCancel {
+    /// A second install of the same app is refused: it would take over the first one's flag.
+    fn register(id: &'static str) -> Result<Self> {
+        let mut cancels = install_cancels();
+        if cancels.contains_key(id) {
+            return Err(Error::ApplyInFlight("install it again"));
+        }
+        let flag = Arc::new(AtomicBool::new(false));
+        cancels.insert(id, Arc::clone(&flag));
+        Ok(Self { id, flag })
+    }
+}
+
+impl Drop for InstallCancel {
+    fn drop(&mut self) {
+        install_cancels().remove(self.id);
+    }
+}
+
 /// Runs a removal or install under the app's lock, with the taskbar showing it.
 async fn change_tracked(
     handle: AppHandle,
     app: &'static AppDef,
-    change: fn(&AppDef, &dyn Machine) -> Result<AppPresence>,
+    change: impl FnOnce(&AppDef, &dyn Machine) -> Result<AppPresence> + Send + 'static,
 ) -> Result<AppStatusView> {
     let host = handle.clone();
     let work = run_locked(&app.id, move || {
@@ -284,8 +323,10 @@ pub(crate) async fn install_gated(
     handle: AppHandle,
     app: &'static AppDef,
 ) -> Result<AppStatusView> {
+    let cancel = InstallCancel::register(&app.id)?;
     gate(app, true).await?;
-    change_tracked(handle, app, apps::install).await
+    let flag = Arc::clone(&cancel.flag);
+    change_tracked(handle, app, move |app, m| apps::install(app, m, &flag)).await
 }
 
 #[tauri::command]
@@ -361,6 +402,21 @@ pub async fn install_app(app: AppHandle, app_id: String) -> Result<AppStatusView
     result
 }
 
+/// Stops winget and any Store download it started; `install_app` then reports the outcome.
+/// False when no install of the app is in flight.
+#[tauri::command]
+pub async fn cancel_app_install(app_id: String) -> Result<bool> {
+    log::info!("cancel_app_install: '{app_id}'");
+    let found = install_cancels()
+        .get(app_id.as_str())
+        .map(|flag| flag.store(true, Ordering::SeqCst))
+        .is_some();
+    if !found {
+        log::info!("cancel_app_install: no install of '{app_id}' is in flight");
+    }
+    Ok(found)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,6 +464,17 @@ mod tests {
             revision: None,
         });
         def
+    }
+
+    #[test]
+    fn a_second_install_of_the_same_app_is_refused_until_the_first_ends() {
+        let first = InstallCancel::register("cancel_registry_test").unwrap();
+        assert!(matches!(
+            InstallCancel::register("cancel_registry_test"),
+            Err(Error::ApplyInFlight(_))
+        ));
+        drop(first);
+        assert!(InstallCancel::register("cancel_registry_test").is_ok());
     }
 
     #[test]

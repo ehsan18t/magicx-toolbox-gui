@@ -5,7 +5,7 @@ import * as appsApi from "$lib/api/apps";
 import type { AppOperationKind, AppStatusView, AppView } from "$lib/types";
 import { openExternalUrl } from "$lib/api/platform";
 import { isPermanent, removeConfirmMessage } from "$lib/utils/appPresentation";
-import { errorMessage, isAppExiting } from "$lib/utils/error";
+import { errorMessage, isAppCancelled, isAppExiting } from "$lib/utils/error";
 import { logError } from "$lib/utils/logger";
 import { isStaleReading } from "$lib/utils/stamp";
 import { SvelteMap } from "svelte/reactivity";
@@ -16,6 +16,7 @@ import { toastStore } from "./toast.svelte";
 export interface AppOperation {
   kind: AppOperationKind;
   startedAt: number;
+  cancelling: boolean;
 }
 
 const STORE_PAGE_URL = "ms-windows-store://pdp/?ProductId=";
@@ -97,7 +98,7 @@ async function onWindowFocus(): Promise<void> {
 
 async function run(id: string, kind: AppOperationKind, done: string): Promise<void> {
   if (operations.has(id)) return;
-  operations.set(id, { kind, startedAt: Date.now() });
+  operations.set(id, { kind, startedAt: Date.now(), cancelling: false });
   errors.delete(id);
   let failed = false;
   const subject = appsById.get(id)?.name;
@@ -111,7 +112,8 @@ async function run(id: string, kind: AppOperationKind, done: string): Promise<vo
       return;
     }
     failed = true;
-    errors.set(id, errorMessage(error));
+    if (isAppCancelled(error)) toastStore.info("Install cancelled", { subject });
+    else errors.set(id, errorMessage(error));
   } finally {
     operations.delete(id);
   }
@@ -203,6 +205,22 @@ export const appsStore = {
 
   install(id: string): Promise<void> {
     return run(id, "install", "Installed");
+  },
+
+  /** The install keeps its operation until the backend reports what the cancel left behind. */
+  async cancelInstall(id: string): Promise<void> {
+    const operation = operations.get(id);
+    if (operation?.kind !== "install" || operation.cancelling) return;
+    operations.set(id, { ...operation, cancelling: true });
+    let found = false;
+    try {
+      found = await appsApi.cancelAppInstall(id);
+    } catch (error) {
+      toastStore.failure("Could not cancel the install", error, { subject: appsById.get(id)?.name });
+    }
+    // Not found: the install already ended, or has not reached the backend yet and can be cancelled again.
+    const current = operations.get(id);
+    if (!found && current) operations.set(id, { ...current, cancelling: false });
   },
 
   /** The Store install is unverified, so presence is re-read when the user comes back. */

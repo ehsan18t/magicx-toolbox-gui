@@ -4,6 +4,8 @@ mod run;
 
 pub(crate) use run::{install, presence, remove};
 
+use std::sync::atomic::AtomicBool;
+
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -12,8 +14,8 @@ use serde::Serialize;
 use crate::error::Error;
 use crate::services::appx_index::{AppxIndex, AppxLookup};
 use crate::services::system_info_service;
-use crate::tweaks::kinds::action::{run_script, ScriptRun};
-use crate::tweaks::model::{InstallSource, Shell};
+use crate::tweaks::kinds::action::{run_powershell_until, ScriptRun};
+use crate::tweaks::model::InstallSource;
 
 /// Unknown is never Absent: an unreadable app stays visible with its actions disabled.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -45,7 +47,15 @@ pub(crate) trait Machine: Sync {
     fn elevated(&self) -> bool;
     fn appx(&self, packages: &[String]) -> Result<AppxLookup, Error>;
     fn invalidate(&self);
-    fn powershell(&self, body: &str, timeout: Duration) -> Result<ScriptRun, Error>;
+    fn powershell(&self, body: &str, timeout: Duration) -> Result<ScriptRun, Error> {
+        self.powershell_until(body, timeout, &AtomicBool::new(false))
+    }
+    fn powershell_until(
+        &self,
+        body: &str,
+        timeout: Duration,
+        cancel: &AtomicBool,
+    ) -> Result<ScriptRun, Error>;
     fn winget_available(&self) -> bool;
     fn store_available(&self) -> bool;
 }
@@ -89,8 +99,13 @@ impl Machine for RealMachine<'_> {
         self.0.appx.invalidate();
     }
 
-    fn powershell(&self, body: &str, timeout: Duration) -> Result<ScriptRun, Error> {
-        run_script(Shell::PowerShell, body, timeout)
+    fn powershell_until(
+        &self,
+        body: &str,
+        timeout: Duration,
+        cancel: &AtomicBool,
+    ) -> Result<ScriptRun, Error> {
+        run_powershell_until(body, timeout, cancel)
             .map_err(|e| Error::CommandExecution(e.to_string()))
     }
 
@@ -144,6 +159,8 @@ pub(crate) mod fake {
         pub exits: Mutex<VecDeque<Result<i32, String>>>,
         pub scripts: Mutex<Vec<(String, Duration)>>,
         pub invalidations: AtomicUsize,
+        /// Each script run sets the cancel flag, as a click while it runs would.
+        pub cancels_in_run: bool,
     }
 
     fn next<T: Clone>(queue: &Mutex<VecDeque<Result<T, String>>>) -> Result<T, Error> {
@@ -195,7 +212,15 @@ pub(crate) mod fake {
         fn invalidate(&self) {
             self.invalidations.fetch_add(1, Ordering::SeqCst);
         }
-        fn powershell(&self, body: &str, timeout: Duration) -> Result<ScriptRun, Error> {
+        fn powershell_until(
+            &self,
+            body: &str,
+            timeout: Duration,
+            cancel: &AtomicBool,
+        ) -> Result<ScriptRun, Error> {
+            if self.cancels_in_run {
+                cancel.store(true, Ordering::SeqCst);
+            }
             self.scripts
                 .lock()
                 .unwrap()

@@ -24,6 +24,11 @@ export function isAppExiting(error: unknown): boolean {
   return asBackendError(error)?.code === "APP_EXITING";
 }
 
+/** The user cancelled an app install and the app reads absent afterwards. */
+export function isAppCancelled(error: unknown): boolean {
+  return asBackendError(error)?.code === "APP_CANCELLED";
+}
+
 /** The UAC prompt was declined or dismissed: nothing failed, the app keeps running as it was. */
 export function isElevationDeclined(error: unknown): boolean {
   return asBackendError(error)?.code === "ELEVATION_DECLINED";

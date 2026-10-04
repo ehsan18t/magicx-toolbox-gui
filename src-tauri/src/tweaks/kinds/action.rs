@@ -1,7 +1,7 @@
 //! `ActionKind`: apply/undo/probe for `Action` effects (spec §5.5/§7); not an `EffectKind`, as Actions are not `Setting`s.
 //! Apply/undo [`guard_level`] and reject `Ti` (no `BrokerOp` carries a script); probe is a read and never gates on level.
 //! A missing `undo` or `probe` is `Error::Invalid`, never `Ok`. The exit code is the only success signal; output is logged, never parsed.
-//! `kill()` reaches one pid: every child runs in a [`KillOnCloseJob`], so the timeout bounds the whole tree and the pipe drains end.
+//! `kill()` reaches one pid: every child runs in a [`KillOnCloseJob`], so a timeout or cancel ends the whole tree and the pipe drains end.
 //! A Cmd script reaches `%TEMP%` through [`ExclusiveTempFile`] (user-writable), held until the child exits.
 
 use std::io::Read;
@@ -9,6 +9,7 @@ use std::os::windows::io::AsRawHandle;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::LazyLock;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -205,17 +206,27 @@ fn tail_of(text: &str) -> &str {
 /// Runs one script body to completion or until `timeout` kills it. `code` is the sole,
 /// locale-independent success signal (spec §7); output is never interpreted.
 pub(crate) fn run_script(shell: Shell, body: &str, timeout: Duration) -> Result<ScriptRun, Error> {
+    let never = AtomicBool::new(false);
     match shell {
-        Shell::PowerShell => wait_with_timeout(spawn_powershell(body)?, timeout),
+        Shell::PowerShell => run_powershell_until(body, timeout, &never),
         Shell::Cmd => {
             let file =
                 ExclusiveTempFile::create("magicx-action", "cmd", "action script", body.as_bytes())
                     .map_err(|e| Error::ActionNotStarted(format!("temp script: {e}")))?;
-            wait_with_timeout(spawn_cmd(file.path())?, timeout)
+            wait_with_timeout(spawn_cmd(file.path())?, timeout, &never)
             // `file` drops here, after the child has fully exited: the share-mode lock holds for
             // the whole execution and the temp `.cmd` is deleted only once cmd.exe is done.
         }
     }
+}
+
+/// [`run_script`] for PowerShell that also ends, with an error, once `cancel` is set.
+pub(crate) fn run_powershell_until(
+    body: &str,
+    timeout: Duration,
+    cancel: &AtomicBool,
+) -> Result<ScriptRun, Error> {
+    wait_with_timeout(spawn_powershell(body)?, timeout, cancel)
 }
 
 /// Runs `body` via `powershell.exe -EncodedCommand` (base64 of UTF-16LE, spec §7): the script
@@ -264,9 +275,13 @@ fn spawn(mut cmd: Command, args: &[&str]) -> Result<Child, Error> {
     })
 }
 
-/// Polls `child` until it exits or `timeout` passes, then kills and reaps it (std has no process
-/// timeout, spec §14). The pipes drain on threads, so a chatty script cannot block on a full pipe.
-fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<ScriptRun, Error> {
+/// Polls `child` until it exits, `timeout` passes or `cancel` is set, then kills and reaps it (std
+/// has no process timeout, spec §14). The pipes drain on threads, so a chatty script cannot block.
+fn wait_with_timeout(
+    mut child: Child,
+    timeout: Duration,
+    cancel: &AtomicBool,
+) -> Result<ScriptRun, Error> {
     // Bind `child` into its kill-on-close job before anything else, so a fast-spawning grandchild
     // cannot start outside it. Either step failing kills the child: fail closed, never unmonitored.
     let job = match KillOnCloseJob::new() {
@@ -290,6 +305,13 @@ fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<ScriptRun, E
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
+            Ok(None) if cancel.load(Ordering::SeqCst) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break Err(Error::ActionExecFailed(
+                    "action was cancelled and terminated".into(),
+                ));
+            }
             Ok(None) if start.elapsed() < timeout => thread::sleep(POLL_INTERVAL),
             Ok(None) => {
                 // Timeout exceeded: kill + wait so no orphaned process remains, then report a
@@ -588,6 +610,26 @@ mod tests {
         assert!(
             start.elapsed() < Duration::from_secs(3),
             "the timeout must actually kill the process rather than waiting out the full sleep: took {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn cancel_kills_and_errs() {
+        let cancel = AtomicBool::new(false);
+        let start = Instant::now();
+        let err = thread::scope(|s| {
+            s.spawn(|| {
+                thread::sleep(Duration::from_millis(300));
+                cancel.store(true, Ordering::SeqCst);
+            });
+            run_powershell_until("Start-Sleep -Seconds 5", ACTION_TIMEOUT, &cancel)
+        })
+        .expect_err("a cancelled script must be a typed error");
+        assert!(matches!(err, Error::ActionExecFailed(_)), "got {err:?}");
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "took {:?}",
             start.elapsed()
         );
     }

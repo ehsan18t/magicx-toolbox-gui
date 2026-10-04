@@ -145,6 +145,7 @@ pub fn run() {
             commands::apps::get_app_statuses,
             commands::apps::remove_app,
             commands::apps::install_app,
+            commands::apps::cancel_app_install,
             // Elevation commands
             commands::elevation::restart_as_admin,
             // Update commands

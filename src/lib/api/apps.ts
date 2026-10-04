@@ -20,3 +20,8 @@ export async function removeApp(appId: string): Promise<AppStatusView> {
 export async function installApp(appId: string): Promise<AppStatusView> {
   return await invoke<AppStatusView>("install_app", { appId });
 }
+
+/** Asks the install in flight to stop; `installApp` then settles with the outcome. False when none is running. */
+export async function cancelAppInstall(appId: string): Promise<boolean> {
+  return await invoke<boolean>("cancel_app_install", { appId });
+}

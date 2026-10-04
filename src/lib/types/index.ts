@@ -167,6 +167,7 @@ export type TweakFailureCode = (typeof TWEAK_FAILURE_CODES)[number];
 /** `code` of every backend `Error` (src-tauri/src/error.rs). */
 export const BACKEND_ERROR_CODES = [
   ...TWEAK_FAILURE_CODES,
+  "APP_CANCELLED",
   "APP_EXITING",
   "APP_FAILED",
   "APP_UNAVAILABLE",
